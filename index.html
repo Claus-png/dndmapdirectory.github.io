@@ -3,76 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Eval Maa - Главный Терминал</title>
+    <meta name="description" content="D&D Map Navigation Simulator - Plan routes, manage squads, and simulate travel.">
+    <meta name="theme-color" content="#0d0f12">
+    <meta name="format-detection" content="telephone=no">
+    <title>Eval Maa - D&D Navigator</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        body { background-color: #07090e; color: #e2e8f0; overflow: hidden; }
-        .custom-scroll::-webkit-scrollbar { width: 4px; }
-        .custom-scroll::-webkit-scrollbar-track { background: #0b0f17; }
-        .custom-scroll::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 2px; }
-    </style>
-</head>
-<body class="h-screen w-screen flex antialiased select-none">
-
+    <script src="auth.js"></script>
     <script>
-        window.CoreState = {
-            graph: { version: 2, nodes: [], routes: [], terrains: [] },
-            squads: [
-                { id: 'sq-1', name: 'Авангард', size: 4, gold: 500, inventory: [], personnel: [], route: [], status: 'Ожидание', posX: 0, posY: 0, speedMod: 1 }
-            ],
-            mapParams: { scale: 0.25, tX: 50, tY: 50 },
-            simParams: { time: 0, isRunning: false }
-        };
-
-        // Метод для оповещения всех фреймов об обновлении данных
-        window.notifyFrames = function() {
-            const frame = document.getElementById('content-frame').contentWindow;
-            if (frame && typeof frame.syncUI === 'function') {
-                frame.syncUI();
-            }
-        };
+        // Если уже вошел - перекидываем в дашборд
+        if (AuthService.checkSession()) window.location.href = 'dashboard.html';
     </script>
-
-    <aside class="w-80 bg-[#0b0e14] border-r border-slate-800/80 flex flex-col justify-between p-4 shrink-0 z-20">
-        <div class="space-y-6">
-            <div class="flex items-center gap-3 px-2 py-1 border-b border-slate-800 pb-4">
-                <div class="h-3 w-3 rounded-full bg-amber-500"></div>
-                <div>
-                    <h1 class="text-md font-black tracking-widest text-slate-100 uppercase font-mono">EVAL MAA</h1>
-                    <p class="text-[10px] text-slate-500 uppercase font-bold">Ядро v3.0 (Microfrontends)</p>
-                </div>
-            </div>
-
-            <nav class="space-y-1.5 custom-scroll">
-                <button onclick="loadModule('map.html', this)" class="nav-btn w-full flex items-center justify-between px-3 py-3 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20 font-medium text-xs transition-all">
-                    <span>🗺️ Топология и Маршруты</span><span class="h-1.5 w-1.5 rounded-full bg-amber-500"></span>
-                </button>
-                <button onclick="loadModule('squads.html', this)" class="nav-btn w-full flex items-center justify-between px-3 py-3 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-slate-800/40 font-medium text-xs transition-all">
-                    <span>👥 Управление Отрядами</span>
-                </button>
-                <button onclick="loadModule('simulation.html', this)" class="nav-btn w-full flex items-center justify-between px-3 py-3 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-slate-800/40 font-medium text-xs transition-all">
-                    <span>⏱️ Симулятор Путешествия</span>
-                </button>
-                <button onclick="loadModule('market.html', this)" class="nav-btn w-full flex items-center justify-between px-3 py-3 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-slate-800/40 font-medium text-xs transition-all">
-                    <span>💰 Рынок и Снабжение</span>
-                </button>
-            </nav>
-        </div>
-    </aside>
-
-    <section class="flex-1 h-full relative flex flex-col bg-[#0d0f12]">
-        <iframe id="content-frame" src="map.html" class="absolute inset-0 w-full h-full border-none"></iframe>
-    </section>
+</head>
+<body class="bg-[#07090e] h-screen flex items-center justify-center">
+    <div class="bg-[#11141a] p-8 rounded-2xl border border-slate-800 w-96 shadow-2xl">
+        <h1 class="text-white text-2xl font-bold mb-6">Вход в систему Eval Maa</h1>
+        <input id="user" type="text" placeholder="Имя искателя" class="w-full bg-[#0d0f12] p-3 rounded-lg border border-slate-700 text-white mb-4">
+        <button onclick="login()" class="w-full bg-amber-500 hover:bg-amber-600 text-black font-bold py-3 rounded-lg transition-all">
+            Войти в систему
+        </button>
+    </div>
 
     <script>
-        function loadModule(url, btn) {
-            document.getElementById('content-frame').src = url;
-            document.querySelectorAll('.nav-btn').forEach(b => {
-                b.className = "nav-btn w-full flex items-center justify-between px-3 py-3 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-slate-800/40 font-medium text-xs transition-all";
-                const p = b.querySelector('.rounded-full'); if (p) p.remove();
-            });
-            btn.className = "nav-btn w-full flex items-center justify-between px-3 py-3 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20 font-medium text-xs transition-all";
-            btn.innerHTML += '<span class="h-1.5 w-1.5 rounded-full bg-amber-500"></span>';
+        function login() {
+            const name = document.getElementById('user').value;
+            if(name) {
+                AuthService.setSession(name);
+                window.location.href = 'dashboard.html';
+            }
         }
     </script>
 </body>
