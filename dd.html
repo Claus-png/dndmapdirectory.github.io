@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background: #0d0f12; color: #e2e8f0; margin: 0; overflow: hidden; font-family: system-ui, sans-serif; }
+        canvas { touch-action: none; display: block; width: 100%; height: 100%; }
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #2d3748; }
+    </style>
+</head>
+<body class="h-screen w-screen flex">
+
+    <div class="w-[360px] bg-[#11141a] border-r border-slate-800 flex flex-col p-4 gap-4 overflow-y-auto custom-scrollbar shrink-0 z-10 shadow-xl">
+        <div class="bg-[#161a23] p-4 rounded-xl border border-slate-800">
+            <h2 class="text-xs font-bold uppercase text-amber-500 mb-3">БД Топологии</h2>
+            <label class="cursor-pointer block w-full text-center bg-[#1c2330] hover:bg-[#242d3e] border border-slate-700 text-slate-300 text-xs py-2 rounded-lg transition-colors">
+                Импорт end.json
+                <input type="file" accept=".json" class="hidden" onchange="loadGraphData(event)">
+            </label>
+            <div id="graph-status" class="text-[10px] text-slate-500 mt-2 font-mono text-center">Граф не загружен</div>
+        </div>
+
+        <div class="bg-[#161a23] p-4 rounded-xl border border-slate-800">
+            <h2 class="text-xs font-bold uppercase text-slate-400 mb-3">Информация об узлах</h2>
+            <div id="nodes-list" class="text-[11px] text-slate-500 font-mono space-y-1">Загрузите граф для отображения.</div>
+        </div>
+    </div>
+
+    <div class="flex-1 relative bg-[#090b0e]">
+        <canvas id="map-canvas"></canvas>
+    </div>
+
+    <script>
+        // Получаем ссылку на глобальный стейт родителя
+        const Core = window.parent.CoreState;
+        
+        const canvas = document.getElementById('map-canvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Локальные переменные управления камерой
+        let isDragging = false;
+        let startX, startY;
+
+        function init() {
+            window.addEventListener('resize', resizeCanvas);
+            setupTouch();
+            resizeCanvas();
+            syncUI(); // Подтягиваем данные, если они уже есть в родителе
+        }
+
+        function resizeCanvas() {
+            canvas.width = canvas.parentElement.clientWidth;
+            canvas.height = canvas.parentElement.clientHeight;
+            drawMap();
+        }
+
+        // Вызывается родителем при обновлении данных из других фреймов
+        window.syncUI = function() {
+            if (Core.graph.nodes.length > 0) {
+                document.getElementById('graph-status').innerText = `Загружено узлов: ${Core.graph.nodes.length}`;
+                document.getElementById('graph-status').classList.add('text-emerald-500');
+            }
+            drawMap();
+        };
+
+        function loadGraphData(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    // Записываем данные в глобальный стейт родителя!
+                    Core.graph.nodes = data.nodes || [];
+                    Core.graph.routes = data.routes || [];
+                    Core.graph.terrains = data.terrains || [];
+                    
+                    // Центрируем камеру
+                    const firstCity = Core.graph.nodes.find(n => n.type === 'city');
+                    if (firstCity) {
+                        Core.mapParams.tX = canvas.width / 2 - firstCity.x * Core.mapParams.scale;
+                        Core.mapParams.tY = canvas.height / 2 - firstCity.y * Core.mapParams.scale;
+                    }
+                    
+                    window.parent.notifyFrames(); // Оповещаем систему
+                } catch (err) { alert('Ошибка парсинга графа.'); }
+            };
+            reader.readAsText(file);
+        }
+
+        function setupTouch() {
+            canvas.addEventListener('pointerdown', e => {
+                isDragging = true;
+                startX = e.clientX - Core.mapParams.tX;
+                startY = e.clientY - Core.mapParams.tY;
+            });
+            window.addEventListener('pointermove', e => {
+                if (isDragging) {
+                    Core.mapParams.tX = e.clientX - startX;
+                    Core.mapParams.tY = e.clientY - startY;
+                    drawMap();
+                }
+            });
+            window.addEventListener('pointerup', () => isDragging = false);
+            canvas.addEventListener('wheel', e => {
+                e.preventDefault();
+                let factor = e.deltaY < 0 ? 1.1 : 0.9;
+                Core.mapParams.scale = Math.max(0.05, Math.min(Core.mapParams.scale * factor, 4.0));
+                drawMap();
+            }, { passive: false });
+        }
+
+        function drawMap() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.save();
+            ctx.translate(Core.mapParams.tX, Core.mapParams.tY);
+            ctx.scale(Core.mapParams.scale, Core.mapParams.scale);
+
+            // Отрисовка базовой сетки
+            ctx.strokeStyle = '#141923'; ctx.lineWidth = 2;
+            for (let x = -2000; x < 6000; x += 200) { ctx.beginPath(); ctx.moveTo(x, -2000); ctx.lineTo(x, 6000); ctx.stroke(); }
+            for (let y = -2000; y < 6000; y += 200) { ctx.beginPath(); ctx.moveTo(-2000, y); ctx.lineTo(6000, y); ctx.stroke(); }
+
+            // Отрисовка узлов из глобального стейта
+            Core.graph.nodes.forEach(n => {
+                if (n.type === 'city') {
+                    ctx.beginPath(); ctx.arc(n.x, n.y, 14, 0, 2 * Math.PI);
+                    ctx.fillStyle = '#1e293b'; ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 3; ctx.fill(); ctx.stroke();
+                    ctx.fillStyle = '#f1f5f9'; ctx.font = 'bold 20px sans-serif'; ctx.fillText(n.name, n.x + 20, n.y + 6);
+                } else {
+                    ctx.beginPath(); ctx.arc(n.x, n.y, 5, 0, 2 * Math.PI); ctx.fillStyle = '#475569'; ctx.fill();
+                }
+            });
+
+            ctx.restore();
+        }
+
+        init();
+    </script>
+</body>
+</html>

@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Эвал Маа: Редактор Карты (Tablet Edition)</title>
+<style>
+  :root {
+    --bg: #0b0c10; --panel: #16191f; --panel-border: #2e3440;
+    --text: #e5e9f0; --text-dim: #4c566a; --accent: #5e81ac;
+    --success: #a3be8c; --warn: #ebcb8b; --danger: #bf616a; 
+    --selected: #88c0d0; --radius: 12px;
+    --shadow: 0 8px 24px rgba(0,0,0,0.6);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; font-family: system-ui, -apple-system, sans-serif; }
+  
+  /* Фикс высоты под мобильные браузеры через dvh */
+  body { background: var(--bg); color: var(--text); height: 100dvh; min-height: 100dvh; overflow: hidden; display: flex; flex-direction: column; touch-action: none; }
+  #app { display: flex; height: 100dvh; width: 100vw; overflow: hidden; position: relative; }
+  
+  /* Sidebar с адаптивной логикой под планшеты */
+  #sidebar { 
+    width: 360px; 
+    background: var(--panel); 
+    border-right: 1px solid var(--panel-border); 
+    display: flex; 
+    flex-direction: column; 
+    padding: 20px; 
+    gap: 16px; 
+    overflow-y: auto; 
+    z-index: 10;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 4px 0 24px rgba(0,0,0,0.3);
+  }
+  
+  .section { background: #1e222b; padding: 16px; border-radius: var(--radius); border: 1px solid var(--panel-border); }
+  h4 { font-size: 13px; color: #81a1c1; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 1px; display: flex; justify-content: space-between; align-items: center; }
+  
+  /* Увеличенные тач-зоны для пальцев на планшете */
+  .btn { width: 100%; padding: 14px; border: 1px solid var(--panel-border); background: #2e3440; color: var(--text); border-radius: var(--radius); cursor: pointer; font-size: 15px; transition: background 0.1s, transform 0.1s; display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 8px; min-height: 52px; font-weight: 600; }
+  .btn:active { transform: scale(0.97); background: #3b4252; }
+  .btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.danger { border-color: #4c566a; background: #3b4252; color: #bf616a; }
+  .btn.danger:active { background: var(--danger); color: white; }
+  .btn.small { width: auto; padding: 8px 14px; font-size: 13px; min-height: 40px; margin-bottom: 0; }
+  .btn-icon { width: 56px; height: 56px; padding: 0; flex-shrink: 0; font-size: 22px; border-radius: 50%; box-shadow: var(--shadow); }
+  
+  input[type="text"] { width: 100%; padding: 14px; background: #1e222b; border: 1px solid var(--panel-border); color: var(--text); border-radius: var(--radius); margin-bottom: 8px; font-size: 16px; }
+  
+  .obj-list { max-height: 220px; overflow-y: auto; font-size: 14px; }
+  .obj-item { padding: 12px; background: #2e3440; margin-bottom: 8px; border-radius: var(--radius); display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--panel-border); gap: 8px; }
+  .obj-item.selected { background: #3b4252; border-color: var(--selected); }
+  .obj-item .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 8px; font-weight: 500; }
+  
+  /* Canvas Container */
+  #main { flex: 1; position: relative; overflow: hidden; background: #090a0f; height: 100%; }
+  canvas { display: block; touch-action: none; width: 100%; height: 100%; }
+  
+  /* Floating UI элементов */
+  #fab { position: absolute; bottom: 28px; left: 28px; display: flex; flex-direction: column; gap: 16px; z-index: 20; }
+  #status-bar { position: absolute; bottom: 28px; right: 28px; background: rgba(22, 25, 31, 0.85); padding: 10px 16px; border-radius: 30px; font-size: 13px; color: #d8dee9; pointer-events: none; backdrop-filter: blur(8px); border: 1px solid var(--panel-border); box-shadow: var(--shadow); }
+  
+  /* Модалки под тач-управление */
+  #modal-overlay, #confirm-overlay { position: absolute; top: 0; left: 0; width: 100vw; height: 100dvh; background: rgba(0,0,0,0.7); display: none; justify-content: center; align-items: center; z-index: 200; backdrop-filter: blur(6px); }
+  .modal-box { background: var(--panel); padding: 28px; border-radius: 16px; width: 90%; max-width: 400px; border: 1px solid var(--panel-border); box-shadow: var(--shadow); }
+  .modal-box h3 { margin-bottom: 20px; font-size: 20px; color: #fff; }
+  
+  #toast-container { position: absolute; top: 28px; right: 28px; display: flex; flex-direction: column; gap: 10px; z-index: 300; pointer-events: none; }
+  .toast { background: var(--panel); padding: 16px 24px; border-radius: var(--radius); border-left: 4px solid var(--accent); font-size: 15px; color: #fff; box-shadow: var(--shadow); animation: slideIn 0.3s ease, fadeOut 0.3s ease 2.7s forwards; border: 1px solid var(--panel-border); border-left-width: 4px; }
+  .toast.error { border-left-color: var(--danger); }
+  
+  @keyframes slideIn { from { transform: translateX(120%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+  @keyframes fadeOut { to { opacity: 0; visibility: hidden; } }
+  
+  @media (max-width: 1100px) {
+    #sidebar { position: absolute; height: 100%; width: 340px; }
+    #sidebar.collapsed { transform: translateX(-100%); box-shadow: none; }
+    .btn-icon-toggle { display: flex !important; }
+  }
+  
+  input[type="file"] { display: none; }
+  .hint { font-size: 13px; color: #4c566a; line-height: 1.5; text-align: center; }
+  .flex-row { display: flex; gap: 10px; }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <aside id="sidebar" class="collapsed">
+    <div class="section">
+      <h4>🗺️ Данные <button class="btn danger small" onclick="toggleSidebar()" style="min-height:32px;">Закрыть ✕</button></h4>
+      <button class="btn" onclick="document.getElementById('fileInput').click()">📂 Подложка (PNG/JPG)</button>
+      <input type="file" id="fileInput" accept="image/*">
+      <div class="flex-row">
+        <button class="btn" onclick="document.getElementById('jsonInput').click()" style="flex:1">📥 Импорт</button>
+        <input type="file" id="jsonInput" accept=".json">
+        <button class="btn" onclick="exportJSON()" style="flex:1">💾 Экспорт</button>
+      </div>
+      <div class="hint" id="mapInfo" style="margin-top:8px;">Фон не загружен</div>
+    </div>
+
+    <div class="section">
+      <h4>🛠️ Инструменты</h4>
+      <button class="btn active" id="tool-select" onclick="setTool('select')">👆 Выделение / Движение</button>
+      <button class="btn" id="tool-city" onclick="setTool('city')">📍 Новый город</button>
+      <button class="btn" id="tool-route" onclick="setTool('route')">🛣️ Маршрут</button>
+      <button class="btn" id="tool-poly" onclick="setTool('poly')">🟦 Зона (Полигон)</button>
+      <div class="hint" id="toolHint" style="padding: 8px 0; color:#81a1c1;">1 палец - таскать карту/узлы.</div>
+      
+      <div id="action-buttons" style="display:none; flex-direction:column; gap:8px;">
+        <button class="btn" style="background: #a3be8c; border-color: #a3be8c; color: #2e3440;" onclick="finishDrawing()">✅ Завершить</button>
+        <button class="btn danger" onclick="cancelDrawing()">❌ Отменить (Esc)</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <h4>📋 Управление</h4>
+      <button class="btn danger" onclick="deleteSelected()">🗑️ Удалить выделенное</button>
+      <button class="btn danger" onclick="requestClearAll()">🧹 Очистить проект</button>
+    </div>
+
+    <div class="section obj-list" id="list-cities">Города: 0</div>
+    <div class="section obj-list" id="list-routes">Маршруты: 0</div>
+    <div class="section obj-list" id="list-terrains">Зоны: 0</div>
+  </aside>
+
+  <main id="main">
+    <canvas id="canvas"></canvas>
+    
+    <div id="fab">
+      <button class="btn-icon btn active" onclick="toggleSidebar()" style="background:var(--accent);">☰</button>
+      <button class="btn-icon btn" onclick="resetView()">🎯</button>
+      <button class="btn-icon btn" onclick="undo()">↩️</button>
+    </div>
+    
+    <div id="status-bar">Масштаб: 100% | Центр: 0, 0</div>
+    
+    <div id="modal-overlay">
+      <div class="modal-box">
+        <h3 id="modal-title">Ввод</h3>
+        <input type="text" id="modal-input" autocomplete="off">
+        <div class="flex-row" style="margin-top:20px;">
+          <button class="btn" onclick="closeModal()">Отмена</button>
+          <button class="btn active" onclick="confirmModal()">ОК</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="confirm-overlay">
+      <div class="modal-box">
+        <h3 id="confirm-title">Подтверждение</h3>
+        <p id="confirm-text" style="color:#d8dee9; margin-bottom: 24px; font-size:15px; line-height:1.4;"></p>
+        <div class="flex-row">
+          <button class="btn" onclick="closeConfirm(false)">Отмена</button>
+          <button class="btn danger" onclick="closeConfirm(true)">Удалить все</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="toast-container"></div>
+  </main>
+</div>
+
+<script>
+const state = {
+  nodes: [], routes: [], terrains: [], nodeCounter: 0,
+  tool: 'select', drawing: false, currentNodes: [], currentPoints: [],
+  selected: null, history: [],
+  map: { w: 0, h: 0, img: null },
+  view: { scale: 1, x: 0, y: 0 },
+  input: { resolve: null }, confirm: { resolve: null }
+};
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const dpr = window.devicePixelRatio || 1;
+
+function resize() {
+  const r = canvas.parentElement.getBoundingClientRect();
+  canvas.width = r.width * dpr;
+  canvas.height = r.height * dpr;
+  canvas.style.width = r.width + 'px';
+  canvas.style.height = r.height + 'px';
+  draw();
+}
+window.addEventListener('resize', resize);
+setTimeout(resize, 100);
+
+function screenToCanvas(sx, sy) {
+  const r = canvas.getBoundingClientRect();
+  return { 
+    x: (sx - r.left - state.view.x) / state.view.scale, 
+    y: (sy - r.top - state.view.y) / state.view.scale 
+  };
+}
+
+let pointers = {};
+let draggedNode = null;
+let lastPinchDist = 0;
+let isPanning = false;
+
+canvas.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  pointers[e.pointerId] = { x: e.clientX, y: e.clientY, startX: e.clientX, startY: e.clientY };
+  
+  if (Object.keys(pointers).length === 2) {
+    const ids = Object.keys(pointers);
+    lastPinchDist = Math.hypot(pointers[ids[1]].x - pointers[ids[0]].x, pointers[ids[1]].y - pointers[ids[0]].y);
+    draggedNode = null;
+    return;
+  }
+
+  if (state.tool === 'select' && Object.keys(pointers).length === 1) {
+    const pos = screenToCanvas(e.clientX, e.clientY);
+    const nodeHit = state.nodes.find(n => Math.hypot(n.x - pos.x, n.y - pos.y) <= 30);
+    if (nodeHit) draggedNode = nodeHit;
+  }
+});
+
+canvas.addEventListener('pointermove', e => {
+  e.preventDefault();
+  if (!pointers[e.pointerId]) return;
+  pointers[e.pointerId].x = e.clientX;
+  pointers[e.pointerId].y = e.clientY;
+  
+  const numPointers = Object.keys(pointers).length;
+  
+  if (numPointers === 2) {
+    const ids = Object.keys(pointers);
+    const p1 = pointers[ids[0]], p2 = pointers[ids[1]];
+    const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+    const mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+    
+    if (lastPinchDist > 0) {
+      const scaleDelta = dist / lastPinchDist;
+      const rect = canvas.getBoundingClientRect();
+      const cx = mid.x - rect.left;
+      const cy = mid.y - rect.top;
+      
+      state.view.scale = Math.max(0.1, Math.min(10, state.view.scale * scaleDelta));
+      state.view.x = cx - (cx - state.view.x) * scaleDelta;
+      state.view.y = cy - (cy - state.view.y) * scaleDelta;
+      
+      state.view.x += (e.movementX !== undefined ? e.movementX : 0);
+      state.view.y += (e.movementY !== undefined ? e.movementY : 0);
+    }
+    lastPinchDist = dist;
+    draw();
+    return;
+  }
+  
+  if (numPointers === 1) {
+    const ptr = pointers[e.pointerId];
+    const dx = e.clientX - ptr.startX;
+    const dy = e.clientY - ptr.startY;
+    
+    if (draggedNode) {
+      const pos = screenToCanvas(e.clientX, e.clientY);
+      draggedNode.x = pos.x;
+      draggedNode.y = pos.y;
+      draw();
+      return;
+    }
+
+    if (Math.hypot(dx, dy) > 20) isPanning = true;
+
+    if (isPanning && state.tool === 'select') {
+      state.view.x += e.movementX !== undefined ? e.movementX : (e.clientX - (ptr.lastX || e.clientX));
+      state.view.y += e.movementY !== undefined ? e.movementY : (e.clientY - (ptr.lastY || e.clientY));
+      draw();
+    }
+    ptr.lastX = e.clientX;
+    ptr.lastY = e.clientY;
+  }
+});
+
+canvas.addEventListener('pointerup', e => {
+  const numPointers = Object.keys(pointers).length;
+  if (numPointers === 1) {
+    if (draggedNode) {
+      pushHistory();
+      draggedNode = null;
+    } else if (!isPanning) {
+      const pos = screenToCanvas(e.clientX, e.clientY);
+      handleTap(pos);
+    }
+  }
+  delete pointers[e.pointerId];
+  if (Object.keys(pointers).length === 0) { lastPinchDist = 0; isPanning = false; }
+});
+
+canvas.addEventListener('pointerleave', e => { delete pointers[e.pointerId]; isPanning = false; draggedNode = null; });
+
+window.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && state.drawing) {
+    cancelDrawing();
+  }
+});
+
+function handleTap(pos) {
+  if (state.tool === 'select') {
+    state.selected = findObjectAt(pos);
+    updateUI(); draw(); return;
+  }
+  
+  if (state.tool === 'city') {
+    if (!state.nodes.find(n => Math.hypot(n.x - pos.x, n.y - pos.y) <= 30)) {
+      showModal("Название города", "Город_" + (state.nodes.filter(n=>n.type==='city').length + 1)).then(name => {
+        if (!name) return;
+        pushHistory();
+        state.nodes.push({ id: crypto.randomUUID(), type: 'city', name, x: pos.x, y: pos.y });
+        updateUI(); draw();
+      });
+    }
+  } 
+  else if (state.tool === 'route') {
+    state.drawing = true;
+    document.getElementById('action-buttons').style.display = 'flex';
+    let hit = state.nodes.find(n => Math.hypot(n.x - pos.x, n.y - pos.y) <= 30);
+    let nodeId;
+    if (hit) {
+      nodeId = hit.id;
+    } else {
+      nodeId = `wp_${++state.nodeCounter}`;
+      state.nodes.push({ id: nodeId, type: 'waypoint', name: 'Точка', x: pos.x, y: pos.y });
+    }
+    state.currentNodes.push(nodeId);
+    updateUI(); draw();
+  } 
+  else if (state.tool === 'poly') {
+    state.drawing = true;
+    document.getElementById('action-buttons').style.display = 'flex';
+    state.currentPoints.push({x: pos.x, y: pos.y});
+    updateUI(); draw();
+  }
+}
+
+window.finishDrawing = () => {
+  if (!state.drawing) return;
+  if (state.tool === 'route' && state.currentNodes.length > 1) {
+    pushHistory();
+    state.routes.push({ id: crypto.randomUUID(), nodes: [...state.currentNodes] });
+    showToast("Маршрут сохранен");
+    state.drawing = false; state.currentNodes = []; state.currentPoints = [];
+    document.getElementById('action-buttons').style.display = 'none';
+    updateUI(); draw();
+  } else if (state.tool === 'poly' && state.currentPoints.length > 2) {
+    showModal("Название зоны", "Зона_" + (state.terrains.length + 1)).then(name => {
+      const finalName = name ? name.trim() : "Зона_" + (state.terrains.length + 1);
+      pushHistory();
+      state.terrains.push({ id: crypto.randomUUID(), name: finalName, points: [...state.currentPoints] });
+      showToast("Зона сохранена");
+      state.drawing = false; state.currentNodes = []; state.currentPoints = [];
+      document.getElementById('action-buttons').style.display = 'none';
+      updateUI(); draw();
+    });
+  } else {
+    showToast("Мало точек для сохранения", "error");
+    state.drawing = false; state.currentNodes = []; state.currentPoints = [];
+    document.getElementById('action-buttons').style.display = 'none';
+    updateUI(); draw();
+  }
+};
+
+window.cancelDrawing = () => {
+  state.drawing = false;
+  if (state.tool === 'route') {
+    state.currentNodes.forEach(id => {
+      const node = state.nodes.find(n => n.id === id);
+      if (node && node.type === 'waypoint' && !state.routes.some(r => r.nodes.includes(id))) {
+        state.nodes = state.nodes.filter(n => n.id !== id);
+      }
+    });
+  }
+  state.currentNodes = []; state.currentPoints = [];
+  document.getElementById('action-buttons').style.display = 'none';
+  updateUI(); draw();
+  showToast("Рисование отменено");
+};
+
+function distToSeg(p, v, w) {
+  const l2 = Math.hypot(w.x-v.x, w.y-v.y)**2;
+  if (l2 === 0) return Math.hypot(p.x-v.x, p.y-v.y);
+  let t = ((p.x-v.x)*(w.x-v.x) + (p.y-v.y)*(w.y-v.y)) / l2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(p.x - (v.x + t*(w.x-v.x)), p.y - (v.y + t*(w.y-v.y)));
+}
+
+function findObjectAt(p) {
+  const cityHit = state.nodes.find(c => c.type === 'city' && Math.hypot(c.x-p.x, c.y-p.y) <= 30);
+  if (cityHit) return {type: 'city', id: cityHit.id};
+  for(let r of state.routes) {
+    for(let i=0; i < r.nodes.length-1; i++) {
+      const n1 = state.nodes.find(n => n.id === r.nodes[i]);
+      const n2 = state.nodes.find(n => n.id === r.nodes[i+1]);
+      if(n1 && n2 && distToSeg(p, n1, n2) <= 20) return {type: 'route', id: r.id};
+    }
+  }
+  for(let t of state.terrains) {
+    const pts = [...t.points, t.points[0]];
+    for(let i=0; i < pts.length-1; i++) {
+      if(distToSeg(p, pts[i], pts[i+1]) <= 20) return {type: 'terrain', id: t.id};
+    }
+  }
+  return null;
+}
+
+function drawDirectionArrow(x1, y1, x2, y2, color) {
+  const midX = (x1 + x2) / 2;
+  const midY = (y1 + y2) / 2;
+  const angle = Math.atan2(y2 - y1, x2 - x1);
+  ctx.save();
+  ctx.translate(midX, midY);
+  ctx.rotate(angle);
+  ctx.beginPath();
+  ctx.moveTo(-10, -8);
+  ctx.lineTo(8, 0);
+  ctx.lineTo(-10, 8);
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.restore();
+}
+
+function draw() {
+  const w = canvas.width / dpr, h = canvas.height / dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  
+  ctx.save();
+  ctx.translate(state.view.x, state.view.y);
+  ctx.scale(state.view.scale, state.view.scale);
+  
+  if (state.map.img) ctx.drawImage(state.map.img, 0, 0, state.map.w, state.map.h);
+  
+  state.terrains.forEach(t => {
+    const sel = state.selected?.id === t.id;
+    ctx.beginPath(); ctx.moveTo(t.points[0].x, t.points[0].y);
+    t.points.slice(1).forEach(p => ctx.lineTo(p.x, p.y));
+    ctx.closePath();
+    ctx.fillStyle = sel ? 'rgba(136, 192, 208, 0.45)' : 'rgba(94, 129, 172, 0.25)';
+    ctx.strokeStyle = sel ? '#88c0d0' : '#5e81ac';
+    ctx.lineWidth = sel ? 4 : 2;
+    ctx.fill(); ctx.stroke();
+
+    if (t.name) {
+      let cx = 0, cy = 0;
+      t.points.forEach(p => { cx += p.x; cy += p.y; });
+      cx /= t.points.length; cy /= t.points.length;
+      ctx.save();
+      ctx.fillStyle = '#81a1c1'; ctx.font = '13px sans-serif';
+      ctx.shadowColor = '#000'; ctx.shadowBlur = 4; ctx.textAlign = 'center';
+      ctx.fillText(t.name, cx, cy);
+      ctx.restore();
+    }
+  });
+  
+  if (state.drawing && state.tool === 'poly' && state.currentPoints.length > 0) {
+    ctx.beginPath(); ctx.moveTo(state.currentPoints[0].x, state.currentPoints[0].y);
+    state.currentPoints.slice(1).forEach(p => ctx.lineTo(p.x, p.y));
+    ctx.strokeStyle = '#d8dee9'; ctx.lineWidth = 2; ctx.setLineDash([6,6]); ctx.stroke(); ctx.setLineDash([]);
+    if (state.currentPoints.length > 1) {
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(216, 222, 233, 0.2)'; ctx.fill();
+    }
+  }
+
+  state.routes.forEach(r => {
+    if(r.nodes.length < 2) return;
+    const sel = state.selected?.id === r.id;
+    const color = sel ? '#88c0d0' : '#ebcb8b';
+    
+    ctx.beginPath();
+    let startNode = state.nodes.find(n => n.id === r.nodes[0]);
+    if(!startNode) return;
+    ctx.moveTo(startNode.x, startNode.y);
+    
+    for(let i=1; i < r.nodes.length; i++) {
+      const nextNode = state.nodes.find(n => n.id === r.nodes[i]);
+      if(nextNode) ctx.lineTo(nextNode.x, nextNode.y);
+    }
+    ctx.strokeStyle = color; ctx.lineWidth = sel ? 6 : 4; 
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.stroke();
+
+    for(let i=0; i < r.nodes.length-1; i++) {
+      const n1 = state.nodes.find(n => n.id === r.nodes[i]);
+      const n2 = state.nodes.find(n => n.id === r.nodes[i+1]);
+      if(n1 && n2) drawDirectionArrow(n1.x, n1.y, n2.x, n2.y, color);
+    }
+  });
+  
+  if (state.drawing && state.tool === 'route' && state.currentNodes.length > 0) {
+    ctx.beginPath();
+    const n0 = state.nodes.find(n => n.id === state.currentNodes[0]);
+    if(n0) {
+      ctx.moveTo(n0.x, n0.y);
+      for(let i=1; i < state.currentNodes.length; i++) {
+        const nx = state.nodes.find(n => n.id === state.currentNodes[i]);
+        if(nx) ctx.lineTo(nx.x, nx.y);
+      }
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.setLineDash([8,8]); ctx.stroke(); ctx.setLineDash([]);
+    }
+  }
+  
+  state.nodes.forEach(n => {
+    if (n.type === 'waypoint') {
+      const selRoute = state.selected?.type === 'route' && state.routes.find(r=>r.id===state.selected.id)?.nodes.includes(n.id);
+      if (selRoute || state.currentNodes.includes(n.id)) {
+        ctx.beginPath(); ctx.arc(n.x, n.y, 6, 0, Math.PI*2);
+        ctx.fillStyle = '#eceff4'; ctx.fill();
+        ctx.strokeStyle = '#2e3440'; ctx.lineWidth = 1; ctx.stroke();
+      }
+      return; 
+    }
+    
+    const sel = state.selected?.id === n.id;
+    ctx.beginPath(); ctx.arc(n.x, n.y, sel ? 14 : 10, 0, Math.PI*2);
+    ctx.fillStyle = '#a3be8c'; ctx.fill(); 
+    ctx.strokeStyle = sel ? '#88c0d0' : '#eceff4'; 
+    ctx.lineWidth = sel ? 4 : 2; ctx.stroke();
+    
+    ctx.fillStyle = '#eceff4'; ctx.font = 'bold 15px sans-serif';
+    ctx.shadowColor = '#000'; ctx.shadowBlur = 6;
+    ctx.fillText(n.name, n.x + 16, n.y + 5);
+    ctx.shadowBlur = 0;
+  });
+  
+  ctx.restore();
+  
+  const rect = canvas.getBoundingClientRect();
+  const mx = Math.round((rect.width/2 - state.view.x)/state.view.scale);
+  const my = Math.round((rect.height/2 - state.view.y)/state.view.scale);
+  document.getElementById('status-bar').textContent = `М-б: ${Math.round(state.view.scale*100)}% | X:${mx}, Y:${my}`;
+}
+
+function updateUI() {
+  document.querySelectorAll('.section > .btn').forEach(b => b.classList.remove('active'));
+  const activeBtn = document.getElementById(`tool-${state.tool}`);
+  if(activeBtn) activeBtn.classList.add('active');
+  
+  const cities = state.nodes.filter(n => n.type === 'city');
+  document.getElementById('list-cities').innerHTML = `<div style="margin-bottom:8px;color:#81a1c1;">Города: ${cities.length}</div>` +
+    cities.map(c => `<div class="obj-item ${state.selected?.id===c.id?'selected':''}" onclick="selectObj('${c.id}')">
+      <span class="name">${c.name}</span>
+      <button class="btn active small" style="min-height:32px; padding:0 8px; margin-bottom:0;" onclick="event.stopPropagation(); renameObj('${c.id}', 'city')">✏️</button>
+      <button class="btn danger small" style="min-height:32px; padding:0 8px; margin-bottom:0;" onclick="event.stopPropagation(); deleteObj('${c.id}')">✕</button></div>`).join('');
+      
+  document.getElementById('list-routes').innerHTML = `<div style="margin-bottom:8px;color:#81a1c1;">Маршруты: ${state.routes.length}</div>` +
+    state.routes.map((r,i) => {
+      const fNode = state.nodes.find(n=>n.id===r.nodes[0]);
+      const lNode = state.nodes.find(n=>n.id===r.nodes[r.nodes.length-1]);
+      return `<div class="obj-item ${state.selected?.id===r.id?'selected':''}" onclick="selectObj('${r.id}')">
+        <span class="name">${i+1}. ${fNode?.name || 'Точка'} ➔ ${lNode?.name || 'Точка'}</span><button class="btn danger small" style="min-height:32px; padding:0 12px; margin-bottom:0;" onclick="event.stopPropagation(); deleteObj('${r.id}')">✕</button></div>`;
+    }).join('');
+    
+  document.getElementById('list-terrains').innerHTML = `<div style="margin-bottom:8px;color:#81a1c1;">Зоны: ${state.terrains.length}</div>` +
+    state.terrains.map((t,i) => `<div class="obj-item ${state.selected?.id===t.id?'selected':''}" onclick="selectObj('${t.id}')">
+      <span class="name">${t.name || 'Зона '+(i+1)}</span>
+      <button class="btn active small" style="min-height:32px; padding:0 8px; margin-bottom:0;" onclick="event.stopPropagation(); renameObj('${t.id}', 'terrain')">✏️</button>
+      <button class="btn danger small" style="min-height:32px; padding:0 8px; margin-bottom:0;" onclick="event.stopPropagation(); deleteObj('${t.id}')">✕</button></div>`).join('');
+      
+  document.getElementById('mapInfo').textContent = state.map.img ? `Размер: ${state.map.w}×${state.map.h}` : 'Фон не загружен';
+}
+
+window.selectObj = id => { 
+  state.selected = state.nodes.find(n=>n.id===id) ? {type:'city',id} : 
+                   state.routes.find(r=>r.id===id) ? {type:'route',id} : 
+                   state.terrains.find(t=>t.id===id) ? {type:'terrain',id} : null; 
+  updateUI(); draw(); 
+};
+
+window.renameObj = (id, type) => {
+  if (type === 'city') {
+    const city = state.nodes.find(n => n.id === id);
+    if (!city) return;
+    showModal("Переименовать город", city.name).then(newName => {
+      if (!newName || !newName.trim()) return;
+      pushHistory();
+      city.name = newName.trim();
+      updateUI(); draw();
+    });
+  } else if (type === 'terrain') {
+    const terrain = state.terrains.find(t => t.id === id);
+    if (!terrain) return;
+    showModal("Переименовать зону", terrain.name || "Зона").then(newName => {
+      if (!newName || !newName.trim()) return;
+      pushHistory();
+      terrain.name = newName.trim();
+      updateUI(); draw();
+    });
+  }
+};
+
+window.deleteObj = id => {
+  pushHistory();
+  if (state.nodes.find(n => n.id === id)) {
+    state.nodes = state.nodes.filter(n => n.id !== id);
+    state.routes = state.routes.filter(r => !r.nodes.includes(id));
+  } else if (state.routes.find(r => r.id === id)) {
+    state.routes = state.routes.filter(r => r.id !== id);
+    cleanupWaypoints();
+  } else {
+    state.terrains = state.terrains.filter(t => t.id !== id);
+  }
+  if (state.selected?.id === id) state.selected = null;
+  updateUI(); draw(); showToast("Удалено");
+};
+
+function cleanupWaypoints() {
+  const used = new Set();
+  state.routes.forEach(r => r.nodes.forEach(id => used.add(id)));
+  state.nodes = state.nodes.filter(n => n.type === 'city' || used.has(n.id));
+}
+
+window.deleteSelected = () => { if(state.selected) { deleteObj(state.selected.id); state.selected = null; updateUI(); draw(); } };
+
+window.requestClearAll = () => {
+  document.getElementById('confirm-title').textContent = "Очистить проект?";
+  document.getElementById('confirm-text').textContent = "Это безвозвратно удалит все созданные объекты на карте.";
+  document.getElementById('confirm-overlay').style.display = 'flex';
+  state.confirm.resolve = (res) => {
+    if(res) {
+      pushHistory();
+      state.nodes=[]; state.routes=[]; state.terrains=[]; state.nodeCounter=0; state.selected=null; 
+      updateUI(); draw(); showToast("Карта очищена");
+    }
+  };
+};
+
+window.closeConfirm = (res) => {
+  document.getElementById('confirm-overlay').style.display = 'none';
+  if (state.confirm.resolve) state.confirm.resolve(res);
+};
+
+window.setTool = t => { if (state.drawing) cancelDrawing(); state.tool=t; updateUI(); draw(); };
+window.toggleSidebar = () => document.getElementById('sidebar').classList.toggle('collapsed');
+window.resetView = () => { state.view={scale:1,x:0,y:0}; draw(); };
+
+window.pushHistory = () => {
+  const snap = JSON.stringify({n: state.nodes, r: state.routes, t: state.terrains, u: state.nodeCounter});
+  state.history.push(snap);
+  if (state.history.length > 30) state.history.shift();
+  localStorage.setItem('eval_maa_map_autosave', snap);
+};
+
+window.undo = () => {
+  if (state.drawing) {
+    if (state.tool === 'route' && state.currentNodes.length > 0) {
+      const removedId = state.currentNodes.pop();
+      const node = state.nodes.find(n => n.id === removedId);
+      if (node && node.type === 'waypoint' && !state.routes.some(r => r.nodes.includes(removedId))) {
+        state.nodes = state.nodes.filter(n => n.id !== removedId);
+      }
+      if (state.currentNodes.length === 0) {
+        state.drawing = false;
+        document.getElementById('action-buttons').style.display = 'none';
+      }
+      draw(); showToast("Последняя точка маршрута удалена"); return;
+    }
+    if (state.tool === 'poly' && state.currentPoints.length > 0) {
+      state.currentPoints.pop();
+      if (state.currentPoints.length === 0) {
+        state.drawing = false;
+        document.getElementById('action-buttons').style.display = 'none';
+      }
+      draw(); showToast("Последняя точка зоны удалена"); return;
+    }
+  }
+
+  if (state.history.length === 0) { showToast("История пуста", "error"); return; }
+  const snap = JSON.parse(state.history.pop());
+  state.nodes = snap.n; state.routes = snap.r; state.terrains = snap.t; state.nodeCounter = snap.u;
+  state.selected = null; cancelDrawing(); updateUI(); draw();
+  localStorage.setItem('eval_maa_map_autosave', JSON.stringify({n: state.nodes, r: state.routes, t: state.terrains, u: state.nodeCounter}));
+  showToast("Действие отменено");
+};
+
+document.getElementById('fileInput').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if(!file) return;
+  const img = new Image();
+  img.onload = () => { state.map.img = img; state.map.w = img.width; state.map.h = img.height; resetView(); updateUI(); showToast("Фон загружен"); };
+  img.src = URL.createObjectURL(file);
+});
+
+window.exportJSON = () => {
+  const data = { version: 2, nodes: state.nodes, routes: state.routes, terrains: state.terrains, nodeCounter: state.nodeCounter };
+  const blob = new Blob([JSON.stringify(data)], {type: "application/json"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "map_graph_export.json";
+  a.click();
+};
+
+document.getElementById('jsonInput').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const data = JSON.parse(ev.target.result);
+      if (!Array.isArray(data.nodes) || !Array.isArray(data.routes)) throw new Error();
+      pushHistory();
+      state.nodes = data.nodes; state.routes = data.routes; state.terrains = data.terrains || []; state.nodeCounter = data.nodeCounter || 0;
+      updateUI(); draw(); showToast("Импорт завершен");
+    } catch(err) { showToast("Ошибка: поврежденный JSON", "error"); }
+  };
+  reader.readAsText(file);
+});
+
+function showModal(title, def) {
+  return new Promise(res => {
+    document.getElementById('modal-title').textContent = title;
+    const inp = document.getElementById('modal-input');
+    inp.value = def;
+    document.getElementById('modal-overlay').style.display = 'flex';
+    setTimeout(() => inp.focus(), 100);
+    state.input.resolve = res;
+  });
+}
+window.closeModal = () => { document.getElementById('modal-overlay').style.display = 'none'; if(state.input.resolve) state.input.resolve(null); };
+window.confirmModal = () => { const val = document.getElementById('modal-input').value.trim(); document.getElementById('modal-overlay').style.display = 'none'; if(state.input.resolve) state.input.resolve(val || null); };
+
+window.showToast = (msg, type="info") => {
+  const c = document.getElementById('toast-container');
+  const t = document.createElement('div');
+  t.className = `toast ${type}`; t.textContent = msg;
+  c.appendChild(t); setTimeout(() => t.remove(), 3000);
+};
+
+function loadAutosave() {
+  try {
+    const snapStr = localStorage.getItem('eval_maa_map_autosave');
+    if (snapStr) {
+      const snap = JSON.parse(snapStr);
+      state.nodes = snap.n || [];
+      state.routes = snap.r || [];
+      state.terrains = snap.t || [];
+      state.nodeCounter = snap.u || 0;
+      updateUI(); draw();
+      setTimeout(() => showToast("Проект автоматически восстановлен"), 400);
+    }
+  } catch (e) {
+    console.error("Ошибка загрузки автосохранения", e);
+  }
+}
+
+loadAutosave();
+updateUI();
+resize();
+</script>
+</body>
+</html>

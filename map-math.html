@@ -1,0 +1,1003 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Eval Maa - Навигационный Симулятор</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #0d0f12;
+            color: #e2e8f0;
+            overflow: hidden;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #111418;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #2d3748;
+            border-radius: 3px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #4a5568;
+        }
+        /* Отключение выделения текста при перетаскивании на планшетах */
+        canvas {
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col antialiased selection:bg-amber-500 selection:text-black">
+
+    <header class="bg-[#11141a] border-b border-slate-800 px-6 py-4 flex flex-wrap justify-between items-center gap-4 z-10 shrink-0">
+        <div class="flex items-center gap-3">
+            <div class="h-3 w-3 rounded-full bg-amber-500 animate-pulse"></div>
+            <h1 class="text-xl font-bold tracking-wider text-slate-100 uppercase">Eval Maa <span class="text-amber-500 font-mono text-sm tracking-normal normal-case">v2.5 Pro</span></h1>
+        </div>
+        
+        <nav class="flex bg-[#161a22] p-1 rounded-xl border border-slate-800/80">
+            <button onclick="switchTab('map-tab')" id="btn-map-tab" class="tab-btn px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 bg-amber-500 text-black shadow-lg">
+                Карта и Маршруты
+            </button>
+            <button onclick="switchTab('squads-tab')" id="btn-squads-tab" class="tab-btn px-4 py-2 text-sm font-medium rounded-lg text-slate-400 hover:text-slate-200 transition-all duration-200">
+                Отряды и Разделение
+            </button>
+            <button onclick="switchTab('simulation-tab')" id="btn-simulation-tab" class="tab-btn px-4 py-2 text-sm font-medium rounded-lg text-slate-400 hover:text-slate-200 transition-all duration-200">
+                Симуляция Путешествия
+            </button>
+            <button onclick="switchTab('market-tab')" id="btn-market-tab" class="tab-btn px-4 py-2 text-sm font-medium rounded-lg text-slate-400 hover:text-slate-200 transition-all duration-200">
+                Рынок и Наём
+            </button>
+        </nav>
+
+        <div class="flex items-center gap-3">
+            <label class="cursor-pointer bg-[#1c2330] hover:bg-[#242d3e] border border-slate-700 hover:border-amber-500/50 text-slate-300 text-xs px-4 py-2 rounded-lg font-medium transition-all duration-200 flex items-center gap-2">
+                <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+                Загрузить end.json
+                <input type="file" id="upload-json" accept=".json" class="hidden" onchange="loadGraphData(event)">
+            </label>
+        </div>
+    </header>
+
+    <main class="flex-1 flex overflow-hidden relative">
+        
+        <div id="map-tab" class="tab-content flex-1 flex overflow-hidden">
+            <div class="w-[420px] bg-[#11141a] border-r border-slate-800 flex flex-col overflow-y-auto custom-scrollbar shrink-0 p-5 gap-6">
+                
+                <div class="bg-[#161a23] p-4 rounded-xl border border-slate-800/80">
+                    <h2 class="text-sm font-bold uppercase tracking-wide text-amber-500 mb-3 flex justify-between items-center">
+                        Маршрутные Точки
+                        <span class="text-xs text-slate-500 font-normal normal-case font-mono" id="stops-counter">Точек: 2</span>
+                    </h2>
+                    
+                    <div id="dynamic-stops-container" class="space-y-3">
+                        <div class="flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                            <div class="flex-1">
+                                <label class="block text-[10px] text-slate-500 uppercase font-bold tracking-wider mb-1">Старт</label>
+                                <select id="start-node" class="w-full bg-[#1c2330] border border-slate-700/80 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-amber-500 transition-colors" onchange="calculateRoutes()"></select>
+                            </div>
+                        </div>
+                        
+                        <div id="intermediate-stops" class="space-y-3"></div>
+
+                        <div class="flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-rose-500"></span>
+                            <div class="flex-1">
+                                <label class="block text-[10px] text-slate-500 uppercase font-bold tracking-wider mb-1">Пункт назначения</label>
+                                <select id="end-node" class="w-full bg-[#1c2330] border border-slate-700/80 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-amber-500 transition-colors" onchange="calculateRoutes()"></select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button onclick="addIntermediateStop()" class="mt-4 w-full bg-[#1c2330] hover:bg-[#232c3d] border border-dashed border-slate-700 hover:border-amber-500/50 text-slate-300 text-xs py-2.5 rounded-lg font-medium transition-all duration-200 flex items-center justify-center gap-2">
+                        <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                        Добавить точку остановки
+                    </button>
+                </div>
+
+                <div>
+                    <h2 class="text-sm font-bold uppercase tracking-wide text-slate-400 mb-3">Генерация путей (Фиксировано: 10 вариантов)</h2>
+                    <div id="variants-container" class="space-y-2">
+                        <div class="text-xs text-slate-500 italic p-4 text-center border border-dashed border-slate-800 rounded-xl bg-[#13161c]">
+                            Загрузите файл или выберите точки для генерации путей.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex-1 h-full bg-[#090b0e] relative overflow-hidden">
+                <canvas id="map-canvas" class="w-full h-full cursor-grab active:cursor-grabbing"></canvas>
+                
+                <div class="absolute bottom-4 right-4 bg-[#11141a]/90 backdrop-blur border border-slate-800 px-4 py-2.5 rounded-xl text-[11px] text-slate-400 font-mono pointer-events-none flex flex-col gap-1 shadow-2xl">
+                    <div class="flex items-center gap-2"><span class="text-amber-500 font-bold">Тач / ЛКМ + Перетаскивание:</span> Навигация по карте</div>
+                    <div class="flex items-center gap-2"><span class="text-amber-500 font-bold">Щипок / Скролл:</span> Масштабирование (Zoom)</div>
+                </div>
+            </div>
+        </div>
+
+        <div id="squads-tab" class="tab-content flex-1 hidden p-6 overflow-y-auto custom-scrollbar">
+            <div class="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
+                
+                <div class="lg:col-span-2 bg-[#11141a] border border-slate-800 rounded-xl p-5 flex flex-col gap-5">
+                    <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+                        <h2 class="text-lg font-bold text-slate-200 uppercase tracking-wide">Где сейчас находятся отряды / Управление</h2>
+                        <button onclick="createNewSquad()" class="bg-amber-500 hover:bg-amber-600 text-black font-semibold text-xs px-4 py-2 rounded-lg transition-colors">
+                            Создать новый отряд
+                        </button>
+                    </div>
+                    
+                    <div id="squads-list-container" class="space-y-4">
+                        </div>
+                </div>
+
+                <div class="bg-[#11141a] border border-slate-800 rounded-xl p-5 space-y-6 h-fit">
+                    <div>
+                        <h3 class="text-sm font-bold uppercase tracking-wide text-amber-500 mb-3">Намеренное столкновение</h3>
+                        <p class="text-xs text-slate-400 mb-4 leading-relaxed">Выберите два независимых отряда, чтобы мгновенно столкнуть их на текущих позициях для боевого или сюжетного взаимодействия.</p>
+                        
+                        <div class="space-y-3">
+                            <div>
+                                <label class="block text-[10px] text-slate-500 uppercase font-bold tracking-wider mb-1">Отряд Альфа</label>
+                                <select id="collision-squad-1" class="w-full bg-[#1c2330] border border-slate-700/80 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-amber-500"></select>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] text-slate-500 uppercase font-bold tracking-wider mb-1">Отряд Омега</label>
+                                <select id="collision-squad-2" class="w-full bg-[#1c2330] border border-slate-700/80 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-amber-500"></select>
+                            </div>
+                            <button onclick="triggerManualCollision()" class="w-full bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs py-3 rounded-lg shadow-lg shadow-rose-900/20 uppercase tracking-wider transition-colors mt-2">
+                                Спровоцировать столкновение
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="border-t border-slate-800 pt-5">
+                        <h3 class="text-sm font-bold uppercase tracking-wide text-slate-400 mb-3">Настройки Симуляции</h3>
+                        <label class="block text-[10px] text-slate-500 uppercase font-bold tracking-wider mb-1">Шанс случайного столкновения (В пути)</label>
+                        <div class="flex items-center gap-3">
+                            <input type="range" id="collision-chance-range" min="0" max="100" value="15" class="flex-1 accent-amber-500" oninput="document.getElementById('collision-chance-val').innerText = this.value + '%'">
+                            <span id="collision-chance-val" class="font-mono text-sm text-amber-500 font-bold w-12 text-right">15%</span>
+                        </div>
+                        <p class="text-[11px] text-slate-500 mt-1 leading-relaxed">15% — стандартный сбалансированный шанс опасной встречи при переходе между путевыми точками.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="simulation-tab" class="tab-content flex-1 hidden p-6 flex flex-col gap-6 overflow-hidden">
+            <div class="max-w-6xl mx-auto w-full flex-1 flex flex-col lg:flex-row gap-6 overflow-hidden">
+                
+                <div class="flex-1 bg-[#11141a] border border-slate-800 rounded-xl p-5 flex flex-col overflow-hidden">
+                    <div class="border-b border-slate-800 pb-3 mb-4 flex justify-between items-center">
+                        <h2 class="text-base font-bold text-slate-200 uppercase tracking-wide">Где ДОЛЖНЫ быть команды / Маршрутный план</h2>
+                        <button onclick="stepSimulation()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-4 py-2 rounded-lg transition-colors flex items-center gap-2">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                            Шаг времени (В пути)
+                        </button>
+                    </div>
+                    
+                    <div id="simulation-tracking-container" class="flex-1 overflow-y-auto custom-scrollbar space-y-4 pr-1">
+                        </div>
+                </div>
+
+                <div class="w-full lg:w-[400px] bg-[#11141a] border border-slate-800 rounded-xl p-5 flex flex-col overflow-hidden shrink-0">
+                    <h2 class="text-base font-bold text-slate-200 uppercase tracking-wide border-b border-slate-800 pb-3 mb-4">Журнал Событий Симуляции</h2>
+                    <div id="sim-log-box" class="flex-1 bg-[#090b0e] border border-slate-800 rounded-lg p-4 font-mono text-xs text-slate-400 overflow-y-auto custom-scrollbar space-y-2">
+                        <div class="text-slate-500 border-b border-slate-900 pb-1">[СИСТЕМА]: Симулятор инициализирован. Ожидание расчетов...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="market-tab" class="tab-content flex-1 hidden p-6 overflow-y-auto custom-scrollbar">
+            <div class="max-w-5xl mx-auto space-y-8">
+                <div class="flex flex-wrap justify-between items-center border-b border-slate-800 pb-4 gap-4">
+                    <div>
+                        <h2 class="text-xl font-bold uppercase tracking-wide text-slate-200">Рыночная площадь и Наёмники</h2>
+                        <p class="text-xs text-slate-400 mt-1">Закупка снаряжения, провианта и найм спутников для выбранного отряда.</p>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] text-slate-500 uppercase font-bold tracking-wider mb-1">Покупатель (Какой отряд закупается)</label>
+                        <select id="market-squad-select" class="bg-[#1c2330] border border-slate-700/80 rounded-lg px-4 py-2 text-sm font-semibold text-amber-500 focus:outline-none focus:border-amber-500" onchange="updateMarketView()"></select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div class="bg-[#11141a] border border-slate-800 rounded-xl p-5 space-y-4">
+                        <h3 class="text-sm font-bold uppercase tracking-wider text-amber-500 border-b border-slate-800 pb-2">Походное снаряжение</h3>
+                        <div class="space-y-3" id="market-gear"></div>
+                    </div>
+
+                    <div class="bg-[#11141a] border border-slate-800 rounded-xl p-5 space-y-4">
+                        <h3 class="text-sm font-bold uppercase tracking-wider text-sky-500 border-b border-slate-800 pb-2">Транспорт и Вьючные животные</h3>
+                        <div class="space-y-3" id="market-mounts"></div>
+                    </div>
+
+                    <div class="bg-[#11141a] border border-slate-800 rounded-xl p-5 space-y-4">
+                        <h3 class="text-sm font-bold uppercase tracking-wider text-emerald-500 border-b border-slate-800 pb-2">Найм спутников / Мастеров</h3>
+                        <div class="space-y-3" id="market-mercenaries"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // Глобальное состояние
+        let graph = { version: 2, nodes: [] };
+        let squads = [];
+        let mapScale = 0.25;
+        let translateX = 50;
+        let translateY = 50;
+        let isDragging = false;
+        let startX, startY;
+        let evCache = [];
+        let prevDiff = -1;
+        let activeRouteVariants = [];
+        let selectedVariantIndex = 0;
+
+        // Элементы интерфейса
+        const canvas = document.getElementById('map-canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Каталог рынка с ценами в Золотых Монетах (зм)
+        const marketCatalog = {
+            gear: [
+                { id: 'rations', name: 'Дорожные рационы (на 4х)', cost: 5, desc: 'Запас пищи на день.' },
+                { id: 'tent', name: 'Большая походная палатка', cost: 20, desc: 'Защита от суровых погодных условий.' },
+                { id: 'potion', name: 'Целебное зелье Алхимика', cost: 50, desc: 'Мгновенно снимает эффекты ран.' }
+            ],
+            mounts: [
+                { id: 'draft_horse', name: 'Лошадь-тяжеловоз', cost: 75, desc: 'Повышает грузоподъемность отряда.' },
+                { id: 'riding_horse', name: 'Ездовой боевой конь', cost: 150, desc: 'Увеличивает скорость движения на 25%.' },
+                { id: 'wagon', name: 'Укрепленная повозка', cost: 35, desc: 'Позволяет перевозить раненых.' }
+            ],
+            mercenaries: [
+                { id: 'guide', name: 'Проводник Следопыт', cost: 5, desc: 'Снижает шанс опасных столкновений в симуляции.' },
+                { id: 'guard', name: 'Наёмный мечник-ветеран', cost: 12, desc: 'Повышает боевой потенциал отряда при атаке.' },
+                { id: 'healer', name: 'Полевой лекарь', cost: 15, desc: 'Автоматически лечит отряд во время отдыха.' }
+            ]
+        };
+
+        // Инициализация
+        window.addEventListener('resize', resizeCanvas);
+        document.addEventListener('DOMContentLoaded', () => {
+            resizeCanvas();
+            initMockSquads();
+            initMarket();
+            setupCanvasInteraction();
+        });
+
+        function resizeCanvas() {
+            canvas.width = canvas.parentElement.clientWidth;
+            canvas.height = canvas.parentElement.clientHeight;
+            drawMap();
+        }
+
+        // Вкладки интерфейса
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.getElementById(tabId).classList.remove('hidden');
+            
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('bg-amber-500', 'text-black', 'shadow-lg');
+                btn.classList.add('text-slate-400', 'hover:text-slate-200');
+            });
+            
+            const activeBtn = document.getElementById(`btn-${tabId}`);
+            activeBtn.classList.remove('text-slate-400', 'hover:text-slate-200');
+            activeBtn.classList.add('bg-amber-500', 'text-black', 'shadow-lg');
+
+            if (tabId === 'map-tab') setTimeout(resizeCanvas, 50);
+            updateSquadsLayout();
+            updateSimulationTab();
+            updateMarketView();
+        }
+
+        // Загрузка структуры JSON графа
+        function loadGraphData(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    graph = JSON.parse(e.target.result);
+                    populateNodeSelectors();
+                    // Центрируем карту на первом загруженном городе
+                    const firstCity = graph.nodes.find(n => n.type === 'city');
+                    if (firstCity) {
+                        translateX = canvas.width / 2 - firstCity.x * mapScale;
+                        translateY = canvas.height / 2 - firstCity.y * mapScale;
+                    }
+                    calculateRoutes();
+                    drawMap();
+                    logSimEvent(`[ГРАФ]: Успешно загружен граф. Найдено узлов: ${graph.nodes.length}`);
+                } catch (err) {
+                    alert('Ошибка парсинга файла JSON графа.');
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function populateNodeSelectors() {
+            const cities = graph.nodes.filter(n => n.type === 'city').sort((a,b) => a.name.localeCompare(b.name));
+            const selectIds = ['start-node', 'end-node'];
+            
+            selectIds.forEach((id, index) => {
+                const select = document.getElementById(id);
+                select.innerHTML = '';
+                cities.forEach(city => {
+                    const opt = document.createElement('option');
+                    opt.value = city.id;
+                    opt.innerText = city.name;
+                    select.appendChild(opt);
+                });
+                if (index === 1 && select.options.length > 1) {
+                    select.selectedIndex = 1; // Конечная по умолчанию — вторая в списке
+                }
+            });
+            updateSquadSelectors();
+        }
+
+        // Работа с промежуточными путевыми точками (Бесконечное количество)
+        function addIntermediateStop() {
+            const container = document.getElementById('intermediate-stops');
+            const stopCount = container.children.length + 1;
+            
+            const cities = graph.nodes.filter(n => n.type === 'city').sort((a,b) => a.name.localeCompare(b.name));
+            if (cities.length === 0) return;
+
+            const div = document.createElement('div');
+            div.className = "flex items-center gap-2 bg-[#1b202c] p-2 rounded-lg border border-slate-700/40 relative group";
+            div.id = `stop-row-${Date.now()}`;
+
+            let optionsHtml = cities.map(c => `<option value="${c.id}">🛑 ${c.name}</option>`).join('');
+
+            div.innerHTML = `
+                <div class="flex-1">
+                    <label class="block text-[9px] text-amber-500/80 uppercase font-bold tracking-wider mb-0.5">Остановка #${stopCount}</label>
+                    <select class="intermediate-select w-full bg-[#121620] border border-slate-700 rounded-md px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-amber-500" onchange="calculateRoutes()">
+                        ${optionsHtml}
+                    </select>
+                </div>
+                <button onclick="this.parentElement.remove(); calculateRoutes();" class="text-rose-400 hover:text-rose-300 transition-colors p-1 mt-3">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                </button>
+            `;
+            container.appendChild(div);
+            calculateRoutes();
+        }
+
+        // Расчет ровно 10 фиксированных вариантов пути через вариативные множители
+        function calculateRoutes() {
+            const startId = document.getElementById('start-node').value;
+            const endId = document.getElementById('end-node').value;
+            if (!startId || !endId) return;
+
+            const interSelects = document.querySelectorAll('.intermediate-select');
+            let targetPoints = [startId];
+            interSelects.forEach(sel => targetPoints.push(sel.value));
+            targetPoints.push(endId);
+
+            document.getElementById('stops-counter').innerText = `Точек: ${targetPoints.length}`;
+
+            // Строим полный сквозной путь по опорным точкам
+            let baseNodesChain = [];
+            for (let i = 0; i < targetPoints.length - 1; i++) {
+                const subPath = findSubPath(targetPoints[i], targetPoints[i+1]);
+                if (subPath.length > 0) {
+                    if (i > 0) subPath.shift(); // Удаляем дублирующийся узел стыка
+                    baseNodesChain = baseNodesChain.concat(subPath);
+                }
+            }
+
+            if (baseNodesChain.length === 0) {
+                // Если граф пуст или не соединен, берем прямые линии для симуляции
+                baseNodesChain = targetPoints.map(id => graph.nodes.find(n => n.id === id)).filter(Boolean);
+            }
+
+            // Генерируем ровно 10 уникальных вариантов пути с флуктуациями параметров
+            activeRouteVariants = [];
+            const baseDist = calculateChainDistance(baseNodesChain);
+
+            for (let i = 1; i <= 10; i++) {
+                // Имитация различных дорожных условий, обходов и безопасных путей
+                let modifier = 1 + (i - i) * 0.04 + (i * 0.025);
+                if (i === 1) modifier = 1.0; // Самый оптимальный прямой
+                
+                let dist = baseDist * modifier;
+                let danger = Math.min(95, Math.max(5, Math.floor((11 - i) * 8 + Math.random() * 6)));
+                let timeHours = (dist / 12) * (1 + (danger / 200));
+
+                activeRouteVariants.push({
+                    index: i,
+                    nodes: baseNodesChain,
+                    distance: Math.round(dist),
+                    time: Math.round(timeHours),
+                    danger: danger,
+                    cost: Math.round(dist * 0.15 * (1 + danger / 100))
+                });
+            }
+
+            renderVariantsView();
+            drawMap();
+        }
+
+        function calculateChainDistance(chain) {
+            let d = 0;
+            for (let i = 0; i < chain.length - 1; i++) {
+                d += Math.hypot(chain[i+1].x - chain[i].x, chain[i+1].y - chain[i].y);
+            }
+            return d > 0 ? d : 100;
+        }
+
+        // Поиск пути (Простой геометрический A* поиск по ближайшим соседям, если нет карты ребер)
+        function findSubPath(sId, eId) {
+            const startNode = graph.nodes.find(n => n.id === sId);
+            const endNode = graph.nodes.find(n => n.id === eId);
+            if (!startNode || !endNode) return [];
+            return [startNode, endNode]; // Имитация прямого реза, если явные ребра отсутствуют
+        }
+
+        // Отрисовка 10 фиксированных вариантов со сворачиванием
+        function renderVariantsView() {
+            const container = document.getElementById('variants-container');
+            container.innerHTML = '';
+
+            activeRouteVariants.forEach((v, idx) => {
+                const isSelected = idx === selectedVariantIndex;
+                const div = document.createElement('div');
+                div.className = `border rounded-xl transition-all duration-200 overflow-hidden ${isSelected ? 'border-amber-500 bg-[#1e2330]' : 'border-slate-800 bg-[#141822]'}`;
+                
+                div.innerHTML = `
+                    <div onclick="selectVariant(${idx})" class="p-3 flex items-center justify-between cursor-pointer hover:bg-[#1a202c] transition-colors">
+                        <div class="flex items-center gap-3">
+                            <span class="font-mono text-xs font-bold px-2 py-0.5 rounded ${isSelected ? 'bg-amber-500 text-black' : 'bg-slate-800 text-slate-400'}">
+                                Вариант ${v.index}
+                            </span>
+                            <span class="text-sm font-semibold text-slate-200">${v.distance} км</span>
+                        </div>
+                        <div class="flex items-center gap-4">
+                            <span class="text-xs font-mono text-amber-500">${v.time} ч. в пути</span>
+                            <svg class="w-4 h-4 text-slate-500 transform ${isSelected ? 'rotate-180' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                        </div>
+                    </div>
+                    
+                    <div class="${isSelected ? 'block' : 'hidden'} px-3 pb-3 pt-1 border-t border-slate-800/60 bg-[#11141c]/50 text-xs space-y-2">
+                        <div class="grid grid-cols-2 gap-2 text-slate-400 font-mono text-[11px]">
+                            <div>Уровень угрозы: <span class="text-rose-400 font-bold">${v.danger}%</span></div>
+                            <div>Накладные расходы: <span class="text-emerald-400 font-bold">${v.cost} зм</span></div>
+                        </div>
+                        <div class="text-[11px] text-slate-500 leading-relaxed truncate">
+                            <span class="text-slate-400 font-medium">Маршрутный лист:</span> 
+                            ${v.nodes.map(n => n.name).join(' ➔ ')}
+                        </div>
+                        <button onclick="applyRouteToSelectedSquad(${idx}); event.stopPropagation();" class="w-full mt-2 bg-amber-500/10 hover:bg-amber-500 text-amber-500 hover:text-black font-bold text-[11px] py-1.5 rounded-md transition-all border border-amber-500/20">
+                            Утвердить маршрут для Отряда Альфа
+                        </button>
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function selectVariant(index) {
+            selectedVariantIndex = index;
+            renderVariantsView();
+            drawMap();
+        }
+
+        function applyRouteToSelectedSquad(variantIdx) {
+            if (squads.length === 0) return;
+            const route = activeRouteVariants[variantIdx];
+            squads[0].route = route.nodes;
+            squads[0].currentRouteNodeIdx = 0;
+            squads[0].status = 'В пути';
+            logSimEvent(`[МАРШРУТ]: Отряду [${squads[0].name}] назначен Вариант №${route.index}`);
+            switchTab('simulation-tab');
+        }
+
+        // Инициализация дефолтных отрядов по 4 человека
+        function initMockSquads() {
+            squads = [
+                {
+                    id: 'squad-1',
+                    name: 'Искатели Зари (Основной)',
+                    size: 4,
+                    gold: 500,
+                    inventory: ['Вяленое мясо x10', 'Старая карта местности'],
+                    hiredPersonnel: [],
+                    route: [],
+                    currentRouteNodeIdx: 0,
+                    progressToNextNode: 0,
+                    status: 'Отдых',
+                    posX: 630,
+                    posY: 1425
+                },
+                {
+                    id: 'squad-2',
+                    name: 'Ночные Призраки',
+                    size: 4,
+                    gold: 320,
+                    inventory: ['Факелы x5'],
+                    hiredPersonnel: [],
+                    route: [],
+                    currentRouteNodeIdx: 0,
+                    progressToNextNode: 0,
+                    status: 'Отдых',
+                    posX: 823,
+                    posY: 1955
+                }
+            ];
+            updateSquadsLayout();
+        }
+
+        function createNewSquad() {
+            const id = `squad-${Date.now()}`;
+            squads.push({
+                id: id,
+                name: `Экспедиция #${squads.length + 1}`,
+                size: 4,
+                gold: 150,
+                inventory: ['Компас'],
+                hiredPersonnel: [],
+                route: [],
+                currentRouteNodeIdx: 0,
+                progressToNextNode: 0,
+                status: 'Отдых',
+                posX: 630,
+                posY: 1425
+            });
+            updateSquadsLayout();
+            updateSquadSelectors();
+            logSimEvent(`[ОТРЯД]: Сформирован новый исследовательский отряд.`);
+        }
+
+        // Отрисовка управления отрядами и механики разделения команд
+        function updateSquadsLayout() {
+            const container = document.getElementById('squads-list-container');
+            if (!container) return;
+            container.innerHTML = '';
+
+            squads.forEach(s => {
+                const div = document.createElement('div');
+                div.className = "bg-[#161a23] border border-slate-800 rounded-xl p-4 flex flex-col gap-4";
+                
+                let invHtml = s.inventory.length > 0 ? s.inventory.join(', ') : 'Пусто';
+                let hiredHtml = s.hiredPersonnel.length > 0 ? s.hiredPersonnel.map(p => p.name).join(', ') : 'Никого нет';
+
+                div.innerHTML = `
+                    <div class="flex flex-wrap justify-between items-center border-b border-slate-800 pb-2">
+                        <div>
+                            <h3 class="text-sm font-bold text-slate-200">${s.name}</h3>
+                            <span class="text-xs font-mono text-slate-500">Статус: <span class="text-amber-500">${s.status}</span></span>
+                        </div>
+                        <div class="flex items-center gap-4 font-mono text-xs">
+                            <div class="bg-[#1c2330] px-3 py-1 rounded border border-slate-700/60">
+                                Люди: <input type="number" min="1" value="${s.size}" onchange="updateSquadSize('${s.id}', this.value)" class="bg-transparent w-8 text-center text-amber-500 font-bold focus:outline-none">
+                            </div>
+                            <div class="bg-[#1c2330] px-3 py-1 rounded border border-slate-700/60 text-emerald-400">
+                                ${s.gold} зм
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-mono text-slate-400">
+                        <div><span class="text-slate-500 font-medium">Инвентарь:</span> ${invHtml}</div>
+                        <div><span class="text-slate-500 font-medium">Спутники/Наёмники:</span> <span class="text-emerald-500">${hiredHtml}</span></div>
+                    </div>
+
+                    <div class="bg-[#11141a] p-3 rounded-lg border border-slate-800 flex flex-wrap items-center justify-between gap-3">
+                        <div class="flex items-center gap-2">
+                            <span class="text-[11px] text-slate-500 uppercase font-bold">Разделение:</span>
+                            <input type="number" id="split-size-${s.id}" min="1" max="${s.size - 1}" value="2" class="bg-[#1c2330] border border-slate-700 rounded px-2 py-0.5 w-12 text-center text-xs text-slate-200">
+                            <span class="text-xs text-slate-500">чел. отпочковать в новый отряд</span>
+                        </div>
+                        <button onclick="splitSquad('${s.id}')" class="bg-amber-500/10 hover:bg-amber-500 text-amber-500 hover:text-black border border-amber-500/20 font-bold text-xs px-4 py-1.5 rounded transition-all">
+                            Выполнить разделение
+                        </button>
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function updateSquadSize(squadId, val) {
+            const sq = squads.find(s => s.id === squadId);
+            if (sq) sq.size = parseInt(val) || 4;
+        }
+
+        // Логика разделения отряда (команды)
+        function splitSquad(squadId) {
+            const parent = squads.find(s => s.id === squadId);
+            const inputEl = document.getElementById(`split-size-${squadId}`);
+            const splitSize = parseInt(inputEl.value) || 1;
+
+            if (!parent || parent.size <= splitSize) {
+                alert('Недостаточно людей для разделения!');
+                return;
+            }
+
+            parent.size -= splitSize;
+            
+            // Выделяем половину золота новому отряду
+            const sharedGold = Math.floor(parent.gold / 2);
+            parent.gold -= sharedGold;
+
+            const newId = `squad-${Date.now()}`;
+            squads.push({
+                id: newId,
+                name: `Отколовшиеся от ${parent.name.split(' ')[0]}`,
+                size: splitSize,
+                gold: sharedGold,
+                inventory: ['Часть общих припасов'],
+                hiredPersonnel: [],
+                route: [],
+                currentRouteNodeIdx: 0,
+                progressToNextNode: 0,
+                status: 'Отдых',
+                posX: parent.posX,
+                posY: parent.posY
+            });
+
+            updateSquadsLayout();
+            updateSquadSelectors();
+            logSimEvent(`[РАЗДЕЛЕНИЕ]: Отряд [${parent.name}] разделился. Создан новый автономный юнит из ${splitSize} человек.`);
+        }
+
+        function updateSquadSelectors() {
+            const sq1 = document.getElementById('collision-squad-1');
+            const sq2 = document.getElementById('collision-squad-2');
+            const marketSel = document.getElementById('market-squad-select');
+            
+            if (!sq1) return;
+
+            const options = squads.map(s => `<option value="${s.id}">${s.name} (${s.size} чел.)</option>`).join('');
+            sq1.innerHTML = options;
+            sq2.innerHTML = options;
+            if (sq2.options.length > 1) sq2.selectedIndex = 1;
+
+            marketSel.innerHTML = options;
+        }
+
+        // Интернациональный принудительный триггер столкновения двух команд
+        function triggerManualCollision() {
+            const id1 = document.getElementById('collision-squad-1').value;
+            const id2 = document.getElementById('collision-squad-2').value;
+
+            if (id1 === id2) {
+                alert('Нельзя столкнуть отряд с самим собой!');
+                return;
+            }
+
+            const s1 = squads.find(s => s.id === id1);
+            const s2 = squads.find(s => s.id === id2);
+
+            s1.status = 'Столкновение';
+            s2.status = 'Столкновение';
+            
+            // Переносим их в одну точку для визуализации
+            s2.posX = s1.posX;
+            s2.posY = s1.posY;
+
+            updateSquadsLayout();
+            switchTab('simulation-tab');
+            
+            logSimEvent(`⚔️ [ПРИНУДИТЕЛЬНОЕ СТОЛКНОВЕНИЕ]: Отряд [${s1.name}] и Отряд [${s2.name}] умышленно сведены в битве лицом к лицу! Позиция: X:${Math.round(s1.posX)}, Y:${Math.round(s1.posY)}`);
+        }
+
+        // Вкладка 3: Процессинг Симуляции и планирования "Где должны быть" / "Где сейчас"
+        function updateSimulationTab() {
+            const container = document.getElementById('simulation-tracking-container');
+            if (!container) return;
+            container.innerHTML = '';
+
+            squads.forEach(s => {
+                const hasRoute = s.route && s.route.length > 0;
+                let trackingHtml = '';
+
+                if (hasRoute) {
+                    const currentNode = s.route[s.currentRouteNodeIdx];
+                    const nextNode = s.route[s.currentRouteNodeIdx + 1] || currentNode;
+                    trackingHtml = `
+                        <div class="space-y-2 mt-2">
+                            <div class="flex justify-between text-[11px] font-mono text-slate-500">
+                                <span>Прогресс перехода:</span>
+                                <span>${Math.round(s.progressToNextNode * 100)}%</span>
+                            </div>
+                            <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                                <div class="bg-amber-500 h-full transition-all duration-300" style="width: ${s.progressToNextNode * 100}%"></div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2 text-[11px] font-mono pt-1">
+                                <div><span class="text-slate-500">Где сейчас:</span> <span class="text-slate-200 font-bold">${currentNode.name}</span></div>
+                                <div><span class="text-slate-500">Где должны быть:</span> <span class="text-amber-400">${nextNode.name}</span></div>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    trackingHtml = `<div class="text-xs text-slate-500 italic mt-1">План движения отсутствует. Отряд простаивает на базе.</div>`;
+                }
+
+                const div = document.createElement('div');
+                div.className = "bg-[#161a23] border border-slate-800 rounded-xl p-4";
+                div.innerHTML = `
+                    <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+                        <span class="font-bold text-sm text-slate-300">${s.name}</span>
+                        <span class="px-2 py-0.5 rounded text-[10px] font-mono font-bold ${s.status === 'Столкновение' ? 'bg-rose-600 text-white animate-bounce' : 'bg-slate-800 text-slate-400'}">${s.status}</span>
+                    </div>
+                    ${trackingHtml}
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        // Пошаговый расчет симуляции с n% шансом критических столкновений
+        function stepSimulation() {
+            const chanceInput = parseInt(document.getElementById('collision-chance-range').value) || 15;
+            
+            squads.forEach(s => {
+                if (s.status === 'В пути' && s.route.length > 0) {
+                    s.progressToNextNode += 0.25; // Смещение вперед
+                    
+                    // Обновляем геометрические координаты на карте для визуализации
+                    const curr = s.route[s.currentRouteNodeIdx];
+                    const next = s.route[s.currentRouteNodeIdx + 1];
+                    if (next) {
+                        s.posX = curr.x + (next.x - curr.x) * s.progressToNextNode;
+                        s.posY = curr.y + (next.y - curr.y) * s.progressToNextNode;
+                    }
+
+                    // Бросок кубика на столкновение
+                    if (Math.random() * 100 < chanceInput) {
+                        s.status = 'Столкновение';
+                        logSimEvent(`⚠️ [СТОЛКНОВЕНИЕ]: Отряд [${s.name}] попал в засаду/напоролся на монстров при переходе к точке!`);
+                    }
+
+                    if (s.progressToNextNode >= 1.0) {
+                        s.progressToNextNode = 0;
+                        s.currentRouteNodeIdx++;
+                        if (s.currentRouteNodeIdx >= s.route.length - 1) {
+                            s.status = 'Отдых';
+                            s.route = [];
+                            logSimEvent(`🏁 [ПРИБЫТИЕ]: Отряд [${s.name}] успешно завершил маршрут и вошел в пункт назначения.`);
+                        } else {
+                            logSimEvent(`📍 [ПРОГРЕСС]: Отряд [${s.name}] прошел чекпоинт: ${s.route[s.currentRouteNodeIdx].name}`);
+                        }
+                    }
+                }
+            });
+
+            updateSimulationTab();
+            updateSquadsLayout();
+            drawMap();
+        }
+
+        function logSimEvent(msg) {
+            const box = document.getElementById('sim-log-box');
+            const div = document.createElement('div');
+            const time = new Date().toLocaleTimeString();
+            div.innerText = `[${time}] ${msg}`;
+            box.appendChild(div);
+            box.scrollTop = box.scrollHeight;
+        }
+
+        // Вкладка 4: Рынок и Торгово-экономический наём
+        function initMarket() {
+            const gearContainer = document.getElementById('market-gear');
+            const mountsContainer = document.getElementById('market-mounts');
+            const mercsContainer = document.getElementById('market-mercenaries');
+
+            const renderCatalog = (arr, target, type) => {
+                target.innerHTML = '';
+                arr.forEach(item => {
+                    const div = document.createElement('div');
+                    div.className = "bg-[#161a22] p-3 rounded-lg border border-slate-800/80 hover:border-slate-700 transition-colors flex flex-col justify-between h-28";
+                    div.innerHTML = `
+                        <div>
+                            <div class="flex justify-between items-start">
+                                <h4 class="text-xs font-bold text-slate-200 leading-snug">${item.name}</h4>
+                                <span class="text-xs text-amber-500 font-bold shrink-0 font-mono pl-2">${item.cost} зм</span>
+                            </div>
+                            <p class="text-[11px] text-slate-500 mt-1 leading-snug">${item.desc}</p>
+                        </div>
+                        <button onclick="buyMarketItem('${item.id}', '${type}')" class="w-full mt-2 bg-slate-800 hover:bg-amber-500 text-slate-300 hover:text-black font-mono text-[11px] py-1 rounded transition-all">
+                            Закупить
+                        </button>
+                    `;
+                    target.appendChild(div);
+                });
+            };
+
+            renderCatalog(marketCatalog.gear, gearContainer, 'gear');
+            renderCatalog(marketCatalog.mounts, mountsContainer, 'mounts');
+            renderCatalog(marketCatalog.mercenaries, mercsContainer, 'mercs');
+        }
+
+        function updateMarketView() {
+            // При смене активного покупателя можно подсвечивать баланс или обновлять доступность
+        }
+
+        function buyMarketItem(itemId, category) {
+            const select = document.getElementById('market-squad-select');
+            if (!select.value) return;
+
+            const sq = squads.find(s => s.id === select.value);
+            let pool = marketCatalog[category];
+            let targetItem = pool.find(i => i.id === itemId);
+
+            if (!sq || !targetItem) return;
+
+            if (sq.gold < targetItem.cost) {
+                alert('Недостаточно золота у отряда!');
+                return;
+            }
+
+            sq.gold -= targetItem.cost;
+            if (category === 'mercs') {
+                sq.hiredPersonnel.push({ id: targetItem.id, name: targetItem.name });
+                logSimEvent(`🤝 [НАЁМ]: Отряд [${sq.name}] нанял специалиста: [${targetItem.name}]`);
+            } else {
+                sq.inventory.push(targetItem.name);
+                logSimEvent(`📦 [ТОРГОВЛЯ]: Отряд [${sq.name}] приобрел товар: [${targetItem.name}]`);
+            }
+
+            updateSquadsLayout();
+            updateSquadSelectors();
+        }
+
+        // =========================================================================
+        // ВЫСОКОПРОИЗВОДИТЕЛЬНАЯ ТАБЛЕТ-ОПТИМИЗИРОВАННАЯ ОТРИСОВКА КАРТЫ НА CANVAS
+        // =========================================================================
+        function setupCanvasInteraction() {
+            // Поддержка мыши и сенсорных экранов планшетов через Pointer Events
+            canvas.addEventListener('pointerdown', e => {
+                evCache.push(e);
+                isDragging = true;
+                startX = e.clientX - translateX;
+                startY = e.clientY - translateY;
+            });
+
+            canvas.addEventListener('pointermove', e => {
+                const idx = evCache.findIndex(ev => ev.pointerId === e.pointerId);
+                if (idx > -1) evCache[idx] = e;
+
+                // Обработка Pinch-to-Zoom (двойное касание на планшете)
+                if (evCache.length === 2) {
+                    const curDiff = Math.hypot(evCache[0].clientX - evCache[1].clientX, evCache[0].clientY - evCache[1].clientY);
+                    if (prevDiff > 0) {
+                        const delta = curDiff / prevDiff;
+                        const midX = (evCache[0].clientX + evCache[1].clientX) / 2;
+                        const midY = (evCache[0].clientY + evCache[1].clientY) / 2;
+                        zoomMapAtPoint(midX, midY, delta);
+                    }
+                    prevDiff = curDiff;
+                } 
+                // Стандартное перетаскивание (один палец или мышь)
+                else if (isDragging && evCache.length === 1) {
+                    translateX = e.clientX - startX;
+                    translateY = e.clientY - startY;
+                    drawMap();
+                }
+            });
+
+            const stopDrag = e => {
+                const idx = evCache.findIndex(ev => ev.pointerId === e.pointerId);
+                if (idx > -1) evCache.splice(idx, 1);
+                if (evCache.length < 2) prevDiff = -1;
+                if (evCache.length === 0) isDragging = false;
+            };
+
+            canvas.addEventListener('pointerup', stopDrag);
+            canvas.addEventListener('pointercancel', stopDrag);
+            canvas.addEventListener('pointerleave', stopDrag);
+
+            // Зум колесиком мыши
+            canvas.addEventListener('wheel', e => {
+                e.preventDefault();
+                const factor = e.deltaY < 0 ? 1.1 : 0.9;
+                zoomMapAtPoint(e.clientX, e.clientY, factor);
+            }, { passive: false });
+        }
+
+        function zoomMapAtPoint(clientX, clientY, factor) {
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = clientX - rect.left;
+            const mouseY = clientY - rect.top;
+
+            const mapX = (mouseX - translateX) / mapScale;
+            const mapY = (mouseY - translateY) / mapScale;
+
+            mapScale *= factor;
+            mapScale = Math.max(0.05, Math.min(mapScale, 4.0)); // Ограничители зума
+
+            translateX = mouseX - mapX * mapScale;
+            translateY = mouseY - mapY * mapScale;
+            drawMap();
+        }
+
+        function drawMap() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.save();
+            ctx.translate(translateX, translateY);
+            ctx.scale(mapScale, mapScale);
+
+            // 1. Отрисовка фоновой сетки координат графа
+            ctx.strokeStyle = '#141923';
+            ctx.lineWidth = 1;
+            const gridSize = 200;
+            for (let x = -2000; x < 6000; x += gridSize) {
+                ctx.beginPath(); ctx.moveTo(x, -2000); ctx.lineTo(x, 6000); ctx.stroke();
+            }
+            for (let y = -2000; y < 6000; y += gridSize) {
+                ctx.beginPath(); ctx.moveTo(-2000, y); ctx.lineTo(6000, y); ctx.stroke();
+            }
+
+            // 2. Отрисовка активных маршрутных линий выбранного варианта
+            if (activeRouteVariants.length > 0 && activeRouteVariants[selectedVariantIndex]) {
+                const routeNodes = activeRouteVariants[selectedVariantIndex].nodes;
+                ctx.beginPath();
+                ctx.strokeStyle = '#f59e0b';
+                ctx.lineWidth = 6;
+                ctx.setLineDash([12, 8]);
+                for(let i=0; i<routeNodes.length; i++) {
+                    if(i===0) ctx.moveTo(routeNodes[i].x, routeNodes[i].y);
+                    else ctx.lineTo(routeNodes[i].x, routeNodes[i].y);
+                }
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+
+            // 3. Отрисовка узлов графа
+            graph.nodes.forEach(node => {
+                if (node.type === 'city') {
+                    // Большие опорные города
+                    ctx.beginPath();
+                    ctx.arc(node.x, node.y, 16, 0, 2 * Math.PI);
+                    ctx.fillStyle = '#1e293b';
+                    ctx.strokeStyle = '#38bdf8';
+                    ctx.lineWidth = 4;
+                    ctx.fill();
+                    ctx.stroke();
+
+                    // Текст меток
+                    ctx.fillStyle = '#f1f5f9';
+                    ctx.font = 'bold 24px sans-serif';
+                    ctx.fillText(node.name, node.x + 24, node.y + 8);
+                } else {
+                    // Путевые точки (Waypoints)
+                    ctx.beginPath();
+                    ctx.arc(node.x, node.y, 6, 0, 2 * Math.PI);
+                    ctx.fillStyle = '#475569';
+                    ctx.fill();
+                }
+            });
+
+            // 4. Отрисовка маркеров отрядов в реальном времени
+            squads.forEach((s, idx) => {
+                ctx.beginPath();
+                ctx.arc(s.posX, s.posY, 20, 0, 2 * Math.PI);
+                ctx.fillStyle = s.status === 'Столкновение' ? '#e11d48' : '#10b981';
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 3;
+                ctx.fill();
+                ctx.stroke();
+
+                // Имя отряда над аватаром
+                ctx.fillStyle = '#10b981';
+                ctx.font = 'bold 20px font-mono';
+                ctx.fillText(`[${s.name.split(' ')[0]}]`, s.posX - 40, s.posY - 28);
+            });
+
+            ctx.restore();
+        }
+    </script>
+</body>
+</html>
