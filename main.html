@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Eval Maa: Дашборд Проводника (Tablet Edition)</title>
+<style>
+  :root {
+    --bg-main: #0a0c10; --bg-panel: #121620; --border: #262e42;
+    --text: #e2e8f0; --text-muted: #64748b; --accent: #3b82f6;
+    --party-a: #60a5fa; --party-b: #f87171; --success: #4ade80;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  body { background: var(--bg-main); color: var(--text); height: 100dvh; display: flex; overflow: hidden; }
+
+  /* Боковая панель оптимизирована под палец */
+  #control-panel { width: 440px; background: var(--bg-panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; z-index: 10; box-shadow: 10px 0 30px rgba(0,0,0,0.5); }
+  
+  .nav-tabs { display: flex; background: #0f121a; border-bottom: 1px solid var(--border); }
+  .nav-tab { flex: 1; padding: 18px 8px; text-align: center; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); cursor: pointer; border-bottom: 3px solid transparent; transition: 0.15s; }
+  .nav-tab.active { color: #fff; border-bottom-color: var(--accent); background: rgba(59, 130, 246, 0.05); }
+
+  .tab-body { flex: 1; overflow-y: auto; padding: 20px; display: none; flex-direction: column; gap: 20px; -webkit-overflow-scrolling: touch; }
+  .tab-body.active { display: flex; }
+
+  /* Рабочая область холста */
+  #workspace { flex: 1; position: relative; height: 100%; background: #07080b; overflow: hidden; }
+  canvas { width: 100%; height: 100%; display: block; touch-action: none; } /* Блокирует жест прокрутки браузера */
+  
+  /* Компоненты UI повышенной контрастности */
+  .block { background: #161b26; border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  .block-title { font-size: 11px; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 14px; display: flex; justify-content: space-between; }
+  
+  .flex-grid { display: flex; gap: 10px; align-items: center; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  
+  label { font-size: 11px; font-weight: 600; color: #a1a1aa; display: block; margin-bottom: 6px; }
+  select, input, button { width: 100%; padding: 12px 14px; background: #0f121a; border: 1px solid var(--border); color: #fff; border-radius: 8px; font-size: 14px; outline: none; -webkit-appearance: none; }
+  button { background: #1e2538; cursor: pointer; font-weight: 600; transition: background 0.1s; border-color: #2d374f; }
+  button.prime { background: var(--accent); border-color: #60a5fa; }
+  button:active { background: #2d374f; transform: scale(0.98); }
+  button.prime:active { background: #2563eb; }
+
+  /* Элементы списков вариантов */
+  details { background: #0f121a; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; overflow: hidden; }
+  summary { padding: 14px; font-size: 13px; font-weight: 600; cursor: pointer; background: #141924; display: flex; justify-content: space-between; align-items: center; }
+  .details-content { padding: 14px; border-top: 1px solid var(--border); font-size: 12px; color: #94a3b8; line-height: 1.5; }
+  details[open] { border-color: var(--accent); }
+  details.selected { border-color: var(--success); }
+
+  .wp-row { display: flex; gap: 8px; margin-bottom: 10px; align-items: flex-end; }
+  .wp-del { width: 48px; height: 45px; background: #2a1b1b; color: #ef4444; border-color: #4c2626; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+
+  #time-badge { position: absolute; top: 20px; left: 20px; background: rgba(15,18,26,0.9); border: 1px solid var(--border); backdrop-filter: blur(10px); padding: 12px 24px; border-radius: 30px; font-family: monospace; font-size: 16px; font-weight: 700; color: #fbbf24; pointer-events: none; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+  
+  .log-view { flex: 1; min-height: 180px; background: #090b11; border: 1px solid var(--border); border-radius: 8px; padding: 12px; overflow-y: auto; font-family: monospace; font-size: 12px; line-height: 1.5; color: #cbd5e1; -webkit-overflow-scrolling: touch; }
+  .log-item { margin-bottom: 8px; border-bottom: 1px dashed #1e293b; padding-bottom: 6px; }
+  
+  .shop-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #1e293b; }
+  .shop-item:last-child { border: none; }
+</style>
+</head>
+<body>
+
+<aside id="control-panel">
+  <nav class="nav-tabs">
+    <div class="nav-tab active" onclick="switchTab('tab-routes')">🗺️ Маршруты</div>
+    <div class="nav-tab" onclick="switchTab('tab-sim')">⏱️ Симуляция</div>
+    <div class="nav-tab" onclick="switchTab('tab-parties')">👥 Отряды</div>
+    <div class="nav-tab" onclick="switchTab('tab-shop')">💰 Магазин</div>
+  </nav>
+
+  <div class="tab-body active" id="tab-routes">
+    <div class="block">
+      <div class="block-title">📂 Интеграция Данных</div>
+      <div class="grid-2">
+        <button onclick="document.getElementById('f-json').click()">Импорт JSON</button>
+        <button onclick="document.getElementById('f-img').click()">Карта (Текстура)</button>
+      </div>
+      <input type="file" id="f-json" accept=".json" style="display:none">
+      <input type="file" id="f-img" accept="image/*" style="display:none">
+    </div>
+
+    <div class="block" style="border-left: 4px solid var(--party-a);">
+      <div class="block-title">🔷 Цепочка Переходов: Отряд А</div>
+      <div id="wp-container-A"></div>
+      <button onclick="addWaypoint('A')" style="margin-top:8px;">+ Добавить Ссылочный Узел</button>
+    </div>
+
+    <div class="block" style="border-left: 4px solid var(--party-b);">
+      <div class="block-title">🔺 Цепочка Переходов: Отряд Б</div>
+      <div id="wp-container-B"></div>
+      <button onclick="addWaypoint('B')" style="margin-top:8px;">+ Добавить Ссылочный Узел</button>
+    </div>
+
+    <div class="block">
+      <div class="block-title">📋 Фиксированные Варианты Расчета (10 Путей)</div>
+      <div class="grid-2" style="margin-bottom:12px;">
+        <button class="prime" onclick="calculateFixed10('A')" style="background:var(--party-a);">Построить 10 для А</button>
+        <button class="prime" onclick="calculateFixed10('B')" style="background:var(--party-b);">Построить 10 для Б</button>
+      </div>
+      <div id="variants-layout" style="max-height: 280px; overflow-y:auto;">
+        <div style="font-size:12px; text-align:center; color:var(--text-muted); padding:20px;">Постройте маршруты для генерации альтернатив.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tab-body" id="tab-sim">
+    <div class="block" id="oracle-panel" style="text-align:center; font-weight:800; padding:18px; font-size:14px; border-radius:8px;">
+      АНАЛИЗАТОР ПЕРЕХВАТА: ОЖИДАНИЕ ТРАЕКТОРИЙ
+    </div>
+
+    <div class="block">
+      <div class="block-title">🕹️ Регуляция Временного Потока</div>
+      <div class="grid-2" style="margin-bottom:12px;">
+        <button id="btn-play" class="prime" onclick="toggleSim()">▶ ЗАПУСК</button>
+        <button onclick="resetSim()">🔄 СБРОС</button>
+      </div>
+      <label>Шаг дискретизации времени: <span id="speed-val">20</span>х</label>
+      <input type="range" id="sim-speed" min="1" max="100" value="20" oninput="document.getElementById('speed-val').innerText=this.value" style="width:100%; margin-top:6px;">
+    </div>
+
+    <div class="block">
+      <div class="block-title">🎲 Столкновения и Триггеры (D&D 5e)</div>
+      <button onclick="triggerForceCollision()" style="background:#7f1d1d; border-color:#991b1b; margin-bottom:14px; padding:14px;">💥 ИНИЦИИРОВАТЬ ПРИНУДИТЕЛЬНЫЙ ТАРАН</button>
+      <label>Вероятность засады на гекс (D&D standard check):</label>
+      <input type="number" id="encounter-chance" value="15" min="0" max="100">
+    </div>
+
+    <div class="block" style="flex:1; display:flex; flex-direction:column;">
+      <div class="block-title">📜 Системный Лог Событий</div>
+      <div class="log-view" id="main-log"></div>
+    </div>
+  </div>
+
+  <div class="tab-body" id="tab-parties">
+    <div class="block" style="border-left:4px solid var(--party-a);">
+      <div class="block-title" style="color:var(--party-a);">Монитор: Отряд А</div>
+      <div id="status-card-A" style="font-size:13px; line-height:1.6; margin-bottom:12px;">Статус: Отсутствует на карте</div>
+      <div class="grid-2">
+        <div>
+          <label>Личный состав:</label>
+          <input type="number" id="size-A" value="4" min="1" onchange="updatePartySizes()">
+        </div>
+        <button onclick="splitParty('A')" style="margin-top:18px;">✂️ Разделить</button>
+      </div>
+      <div id="subgroups-A" style="display:none; margin-top:12px; font-size:12px; background:#0f121a; padding:8px; border-radius:6px;"></div>
+    </div>
+
+    <div class="block" style="border-left:4px solid var(--party-b);">
+      <div class="block-title" style="color:var(--party-b);">Монитор: Отряд Б</div>
+      <div id="status-card-B" style="font-size:13px; line-height:1.6; margin-bottom:12px;">Статус: Отсутствует на карте</div>
+      <div class="grid-2">
+        <div>
+          <label>Личный состав:</label>
+          <input type="number" id="size-B" value="4" min="1" onchange="updatePartySizes()">
+        </div>
+        <button onclick="splitParty('B')" style="margin-top:18px;">✂️ Разделить</button>
+      </div>
+      <div id="subgroups-B" style="display:none; margin-top:12px; font-size:12px; background:#0f121a; padding:8px; border-radius:6px;"></div>
+    </div>
+  </div>
+
+  <div class="tab-body" id="tab-shop">
+    <div class="block">
+      <div class="block-title">🪙 Финансирование Спецопераций</div>
+      <div class="grid-2">
+        <div><label>Казна А (зм)</label><input type="number" id="gold-A" value="500" onchange="updateGold()"></div>
+        <div><label>Казна Б (зм)</label><input type="number" id="gold-B" value="500" onchange="updateGold()"></div>
+      </div>
+    </div>
+
+    <div class="block">
+      <div class="block-title">🛒 Торговая лавка и Контракты</div>
+      <label>Выбор покупателя для транзакции:</label>
+      <select id="shop-buyer" style="margin-bottom:14px;">
+        <option value="A">Отряд А (Синие)</option>
+        <option value="B">Отряд Б (Красные)</option>
+      </select>
+
+      <div class="shop-item">
+        <div><strong>Сухпаёк (1 день)</strong><br><small style="color:var(--text-muted)">0.5 зм | Жизненно необходим</small></div>
+        <div style="width:130px;"><button onclick="buyEquipment('rations', 0.5)">Закупить (0.5з)</button></div>
+      </div>
+      <div class="shop-item">
+        <div><strong>Вьючная/Верховая Лошадь</strong><br><small style="color:var(--text-muted)">75 зм | Темп форсирования +25%</small></div>
+        <div style="width:130px;"><button onclick="buyEquipment('horse', 75)">Закупить (75з)</button></div>
+      </div>
+      <div class="shop-item">
+        <div><strong>Местный Проводник (Skilled)</strong><br><small style="color:var(--text-muted)">2 зм | Нивелирует штраф рельефа</small></div>
+        <div style="width:130px;"><button onclick="buyEquipment('guide', 2)">Нанять (2з)</button></div>
+      </div>
+    </div>
+
+    <div class="block">
+      <div class="block-title">📦 Имущественная ведомость материального обеспечения</div>
+      <div id="inventory-manifest" style="font-size:12px; color:#94a3b8; line-height:1.6;">Ведомость пуста.</div>
+    </div>
+  </div>
+</aside>
+
+<main id="workspace">
+  <div id="time-badge">ДЕНЬ 1 • 00:00</div>
+  <canvas id="mapCanvas"></canvas>
+</main>
+
+<script>
+// === ГЛОБАЛЬНАЯ АРХИТЕКТУРА И ДАННЫЕ ===
+const state = {
+  nodes: [], routes: [], terrains: [], adj: {},
+  scale: 20, hexSize: 45,
+  view: { x: 0, y: 0, zoom: 1 },
+  mapImg: null,
+  sim: { isRunning: false, time: 0, maxTime: 0, lastFrame: 0 },
+  parties: {
+    A: { waypoints: [], variants: [], selectedIdx: -1, path: null, size: 4, gold: 500, speedMod: 1.0, hasGuide: false, items: { rations: 10, horse: 0, guide: 0 }, timeline: [], subGroups: [] },
+    B: { waypoints: [], variants: [], selectedIdx: -1, path: null, size: 4, gold: 500, speedMod: 1.0, hasGuide: false, items: { rations: 10, horse: 0, guide: 0 }, timeline: [], subGroups: [] }
+  }
+};
+
+const cvs = document.getElementById('mapCanvas');
+const ctx = cvs.getContext('2d');
+
+function init() {
+  window.addEventListener('resize', resizeCanvas);
+  setupTouchControls();
+  resizeCanvas();
+  
+  addWaypoint('A'); addWaypoint('A');
+  addWaypoint('B'); addWaypoint('B');
+  updateInventoryUI();
+}
+
+function resizeCanvas() {
+  cvs.width = cvs.parentElement.clientWidth;
+  cvs.height = cvs.parentElement.clientHeight;
+  draw();
+}
+
+function switchTab(tabId) {
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-body').forEach(b => b.classList.remove('active'));
+  
+  const activeTab = Array.from(document.querySelectorAll('.nav-tab')).find(t => t.getAttribute('onclick').includes(tabId));
+  if(activeTab) activeTab.classList.add('active');
+  document.getElementById(tabId).classList.add('active');
+}
+
+// === УПРАВЛЕНИЕ УЗЛАМИ ЦЕПОЧКИ ===
+function addWaypoint(pid) {
+  const container = document.getElementById(`wp-container-${pid}`);
+  const idx = state.parties[pid].waypoints.length;
+  state.parties[pid].waypoints.push("");
+
+  const row = document.createElement('div');
+  row.className = 'wp-row';
+  row.id = `wp-row-${pid}-${idx}`;
+  
+  const text = idx === 0 ? "Старт" : `Точка ${idx}`;
+  row.innerHTML = `
+    <div style="flex:1">
+      <label>${text}</label>
+      <select id="wp-select-${pid}-${idx}" onchange="state.parties['${pid}'].waypoints[${idx}]=this.value">
+        <option value="">-- Выберите узел --</option>
+        ${state.nodes.filter(n=>n.type==='city').map(n=>`<option value="${n.id}">${n.name}</option>`).join('')}
+      </select>
+    </div>
+    ${idx > 1 ? `<button class="wp-del" onclick="removeWaypoint('${pid}', ${idx})">✕</button>` : ''}
+  `;
+  container.appendChild(row);
+}
+
+function removeWaypoint(pid, idx) {
+  document.getElementById(`wp-row-${pid}-${idx}`)?.remove();
+  state.parties[pid].waypoints[idx] = "";
+}
+
+// === ИМПОРТ И СВЯЗНОСТЬ ГРАФА ===
+document.getElementById('f-json').addEventListener('change', e => {
+  const file = e.target.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const data = JSON.parse(ev.target.result);
+    state.nodes = data.nodes || []; state.routes = data.routes || []; state.terrains = data.terrains || [];
+    buildAdjacencyMatrix();
+    
+    // Каскадное обновление всех селекторов на страницах
+    const cities = state.nodes.filter(n => n.type === 'city');
+    const htmlOpts = '<option value="">-- Выберите узел --</option>' + cities.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+    document.querySelectorAll('[id^="wp-select-"]').forEach(sel => {
+      const v = sel.value; sel.innerHTML = htmlOpts; sel.value = v;
+    });
+    log("Данные графа импортированы. Топология построена.", "#4ade80");
+  };
+  reader.readAsText(file);
+});
+
+document.getElementById('f-img').addEventListener('change', e => {
+  const file = e.target.files[0]; if(!file) return;
+  const img = new Image();
+  img.onload = () => { state.mapImg = img; draw(); };
+  img.src = URL.createObjectURL(file);
+});
+
+function isPointInPoly(p, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    if (((poly[i].y > p.y) !== (poly[j].y > p.y)) && (p.x < (poly[j].x - poly[i].x) * (p.y - poly[i].y) / (poly[j].y - poly[i].y) + poly[i].x)) inside = !inside;
+  }
+  return inside;
+}
+
+function buildAdjacencyMatrix() {
+  state.adj = {};
+  state.nodes.forEach(n => state.adj[n.id] = []);
+  state.routes.forEach(r => {
+    for(let i=0; i<r.nodes.length-1; i++) {
+      let id1 = r.nodes[i], id2 = r.nodes[i+1];
+      let n1 = state.nodes.find(n => n.id === id1), n2 = state.nodes.find(n => n.id === id2);
+      if(n1 && n2) {
+        let d = Math.hypot(n2.x - n1.x, n2.y - n1.y) / state.scale;
+        let mid = { x: (n1.x + n2.x)/2, y: (n1.y + n2.y)/2 };
+        let isDiff = state.terrains.some(t => isPointInPoly(mid, t.points));
+        state.adj[id1].push({ from: id1, to: id2, dist: d, isDiff });
+        state.adj[id2].push({ from: id2, to: id1, dist: d, isDiff });
+      }
+    }
+  });
+}
+
+// === АЛГОРИТМ: СТРОГО 10 КРАТЧАЙШИХ ПУТЕЙ С МУТАЦИЕЙ ВЕСОВ РЕБЕР ===
+function dijkstra(start, end, penalties, partyCtx) {
+  let dists = {}, prev = {}, pq = [];
+  state.nodes.forEach(n => dists[n.id] = Infinity);
+  dists[start] = 0; pq.push({ id: start, d: 0 });
+
+  while(pq.length > 0) {
+    pq.sort((a,b) => a.d - b.d);
+    let u = pq.shift();
+    if(u.id === end) break;
+    if(u.d > dists[u.id]) continue;
+
+    for(let edge of state.adj[u.id] || []) {
+      let terrainMod = edge.isDiff ? (partyCtx.hasGuide ? 1.25 : 2.0) : 1.0;
+      let penalty = penalties[edge.from + "-" + edge.to] || 0;
+      let cost = ((edge.dist * terrainMod) / partyCtx.speedMod) + penalty;
+      
+      if(dists[u.id] + cost < dists[edge.to]) {
+        dists[edge.to] = dists[u.id] + cost;
+        prev[edge.to] = edge;
+        pq.push({ id: edge.to, d: dists[edge.to] });
+      }
+    }
+  }
+  if(!prev[end] && start !== end) return null;
+  let path = [], curr = end;
+  while(curr !== start && prev[curr]) { let e = prev[curr]; path.unshift(e); curr = e.from; }
+  return path;
+}
+
+function calculateFixed10(pid) {
+  const p = state.parties[pid];
+  const wps = p.waypoints.filter(w => w !== "");
+  if(wps.length < 2) { alert("Необходимо указать минимум 2 узла!"); return; }
+
+  p.variants = [];
+  let penalties = {};
+
+  for (let k = 0; k < 10; k++) {
+    let fullChainPath = [];
+    let possible = true;
+
+    for(let i=0; i<wps.length-1; i++) {
+      let segment = dijkstra(wps[i], wps[i+1], penalties, p);
+      if(!segment) { possible = false; break; }
+      fullChainPath = fullChainPath.concat(segment);
+    }
+
+    if(possible && fullChainPath.length > 0) {
+      p.variants.push({ title: `Вариант Маршрута №${k+1}`, path: fullChainPath });
+      
+      // Накладываем весовые штрафы на использованные ребра, выталкивая алгоритм на поиск альтернатив
+      fullChainPath.forEach(e => {
+        penalties[e.from + "-" + e.to] = (penalties[e.from + "-" + e.to] || 0) + e.dist * 2.0;
+        penalties[e.to + "-" + e.from] = (penalties[e.to + "-" + e.from] || 0) + e.dist * 2.0;
+      });
+    } else {
+      if(p.variants.length > 0) p.variants.push({ title: `Альтернатива №${k+1} (Резервный дубль)`, path: p.variants[0].path });
+    }
+  }
+
+  p.selectedIdx = 0;
+  p.path = p.variants[0].path;
+  
+  renderVariantsUI(pid);
+  buildTimeline(pid);
+  recalcOracle();
+  draw();
+}
+
+function renderVariantsUI(pid) {
+  const box = document.getElementById('variants-layout');
+  const p = state.parties[pid];
+  box.innerHTML = `<h4>Маршрутные конфигурации (${pid}):</h4>`;
+  
+  p.variants.forEach((v, idx) => {
+    let dist = v.path.reduce((s, e) => s + e.dist, 0);
+    let isSel = p.selectedIdx === idx ? 'selected' : '';
+    let det = document.createElement('details');
+    det.className = isSel;
+    if(p.selectedIdx === idx) det.setAttribute('open', 'true');
+    
+    det.innerHTML = `
+      <summary onclick="selectVariant('${pid}', ${idx}); event.preventDefault();">
+        <span>${v.title}</span>
+        <span style="color:var(--success)">${dist.toFixed(1)} миль</span>
+      </summary>
+      <div class="details-content">
+        Участков пройдено: ${v.path.length}<br>
+        Модификатор скорости: x${p.speedMod.toFixed(2)}<br>
+        Проводник в штате: ${p.hasGuide ? 'Активен' : 'Отсутствует'}<br>
+        <button onclick="selectVariant('${pid}', ${idx}')" style="font-size:12px; margin-top:8px; padding:6px;">Сделать активным</button>
+      </div>
+    `;
+    box.appendChild(det);
+  });
+}
+
+function selectVariant(pid, idx) {
+  state.parties[pid].selectedIdx = idx;
+  state.parties[pid].path = state.parties[pid].variants[idx].path;
+  renderVariantsUI(pid);
+  buildTimeline(pid);
+  recalcOracle();
+  draw();
+}
+
+// === ТАЙМЛАЙН, МАРШ И СУТОЧНЫЙ ЦИКЛ ПРИВАЛОВ ===
+function buildTimeline(pid) {
+  const p = state.parties[pid]; p.timeline = [];
+  if(!p.path || p.path.length === 0) return;
+
+  let curT = 0, dayWalkingHours = 0;
+  const marchLimit = 8; // Лимит по DMG 5e без перехода на форсированный марш
+
+  p.path.forEach(edge => {
+    let remDist = edge.dist;
+    let n1 = state.nodes.find(n => n.id === edge.from), n2 = state.nodes.find(n => n.id === edge.to);
+
+    while(remDist > 0) {
+      let leftToMarch = marchLimit - dayWalkingHours;
+      if(leftToMarch <= 0) {
+        p.timeline.push({ time: curT, action: 'camp', pos: p.timeline[p.timeline.length-1].pos });
+        curT += 16; dayWalkingHours = 0; continue;
+      }
+
+      let localSpeed = 3.0; // Базовая скорость 3 мили в час
+      if(edge.isDiff) localSpeed /= (p.hasGuide ? 1.25 : 2.0);
+      localSpeed *= p.speedMod;
+
+      let maxDist = leftToMarch * localSpeed;
+      let stepDist = Math.min(remDist, maxDist);
+      let stepHours = stepDist / localSpeed;
+
+      curT += stepHours; dayWalkingHours += stepHours; remDist -= stepDist;
+      let pct = 1 - (remDist / edge.dist);
+      p.timeline.push({ time: curT, action: 'march', pos: { x: n1.x + (n2.x - n1.x)*pct, y: n1.y + (n2.y - n1.y)*pct } });
+    }
+  });
+  p.totalHours = curT;
+  updateStatusCard(pid);
+}
+
+function getPosAtTime(pid, T) {
+  const p = state.parties[pid];
+  if(!p.path || p.timeline.length === 0) return null;
+  if(T <= 0) return state.nodes.find(n => n.id === p.path[0].from);
+  if(T >= p.totalHours) return p.timeline[p.timeline.length-1].pos;
+
+  for(let i=0; i<p.timeline.length-1; i++) {
+    if(T >= p.timeline[i].time && T <= p.timeline[i+1].time) {
+      if(p.timeline[i].action === 'camp') return p.timeline[i].pos;
+      let ratio = (T - p.timeline[i].time) / (p.timeline[i+1].time - p.timeline[i].time);
+      return {
+        x: p.timeline[i].pos.x + (p.timeline[i+1].pos.x - p.timeline[i].pos.x) * ratio,
+        y: p.timeline[i].pos.y + (p.timeline[i+1].pos.y - p.timeline[i].pos.y) * ratio
+      };
+    }
+  }
+  return p.timeline[p.timeline.length-1].pos;
+}
+
+// === АНАЛИЗАТОР ПЕРЕХВАТА И СТОЛКНОВЕНИЯ ===
+function recalcOracle() {
+  const pA = state.parties.A, pB = state.parties.B;
+  state.sim.maxTime = Math.max(pA.totalHours || 0, pB.totalHours || 0);
+  const info = document.getElementById('oracle-panel');
+  if(state.sim.maxTime === 0) { info.style.background = "#1f2937"; info.innerText = "АНАЛИЗАТОР: ОЖИДАНИЕ ТРАЕКТОРИЙ"; return; }
+
+  let minD = Infinity, tMin = 0;
+  for(let t=0; t<=state.sim.maxTime; t+=0.2) {
+    let posA = getPosAtTime('A', t), posB = getPosAtTime('B', t);
+    if(posA && posB) {
+      let d = Math.hypot(posA.x - posB.x, posA.y - posB.y) / state.scale;
+      if(d < minD) { minD = d; tMin = t; }
+    }
+  }
+
+  if(minD <= 3.0) {
+    info.style.background = "#7f1d1d";
+    info.innerHTML = `⚠️ КРИТИЧЕСКОЕ СБЛИЖЕНИЕ (День ${Math.floor(tMin/24)+1})<br><small>Дистанция контакта: ${minD.toFixed(1)} миль!</small>`;
+  } else {
+    info.style.background = "#064e3b";
+    info.innerHTML = `🟢 СТОЛКНОВЕНИЯ НА ТРАЕКТОРИЯХ НЕ НАЙДЕНЫ<br><small>Ближайшая точка: ${minD.toFixed(1)} миль</small>`;
+  }
+}
+
+function triggerForceCollision() {
+  let posA = getPosAtTime('A', state.sim.time), posB = getPosAtTime('B', state.sim.time);
+  if(!posA || !posB) { alert("Для тарана оба отряда должны иметь маршруты!"); return; }
+
+  log("🚨 Инициирован принудительный таран. Генерируется вектор перехвата.", "#f87171");
+  let targetNode = { id: "col_node_" + Date.now(), name: "Точка Стычки", x: (posA.x + posB.x)/2, y: (posA.y + posB.y)/2, type: "city" };
+  
+  state.nodes.push(targetNode);
+  buildAdjacencyMatrix();
+
+  state.parties.A.waypoints = [state.parties.A.waypoints[0], targetNode.id];
+  state.parties.B.waypoints = [state.parties.B.waypoints[0], targetNode.id];
+  
+  calculateFixed10('A'); calculateFixed10('B');
+}
+
+// === ДЕФЕГМЕНТАЦИЯ И РАЗДЕЛЕНИЕ ОТРЯДОВ ===
+function updatePartySizes() {
+  state.parties.A.size = parseInt(document.getElementById('size-A').value) || 4;
+  state.parties.B.size = parseInt(document.getElementById('size-B').value) || 4;
+}
+
+function splitParty(pid) {
+  const p = state.parties[pid]; if(p.size <= 1) { alert("Недостаточно людей!"); return; }
+  let count = Math.floor(p.size / 2); p.size -= count;
+  document.getElementById(`size-${pid}`).value = p.size;
+
+  let subG = { id: `${pid}-Sub-${p.subGroups.length+1}`, size: count, pos: getPosAtTime(pid, state.sim.time) || {x:0, y:0} };
+  p.subGroups.push(subG);
+
+  const box = document.getElementById(`subgroups-${pid}`); box.style.display = "block";
+  box.innerHTML += `<div>📍 Подгруппа ${subG.id} (${subG.size} чел.) закрепилась на X:${Math.round(subG.pos.x)}</div>`;
+  log(`Отряд ${pid} разделен. Отрезанный авангард удерживает сектор.`, "#60a5fa");
+}
+
+// === ЭКОНОМИКА ===
+function updateGold() {
+  state.parties.A.gold = parseFloat(document.getElementById('gold-A').value) || 0;
+  state.parties.B.gold = parseFloat(document.getElementById('gold-B').value) || 0;
+}
+
+function buyEquipment(item, cost) {
+  let pid = document.getElementById('shop-buyer').value;
+  let p = state.parties[pid];
+  if(p.gold < cost) { alert(`Недостаточно зм у отряда ${pid}!`); return; }
+  
+  p.gold -= cost; p.items[item]++;
+  document.getElementById(`gold-${pid}`).value = p.gold;
+
+  if(item === 'horse') p.speedMod += 0.20; // Лошади ускоряют караван
+  if(item === 'guide') p.hasGuide = true;
+
+  updateInventoryUI();
+  if(p.path) calculateFixed10(pid);
+}
+
+function updateInventoryUI() {
+  const box = document.getElementById('inventory-manifest');
+  box.innerHTML = ['A', 'B'].map(pid => {
+    let p = state.parties[pid];
+    return `<strong>Отряд ${pid}:</strong> Сухпайки: ${p.items.rations} шт | Кони: ${p.items.horse} | Проводник: ${p.hasGuide?'Есть':'Нет'}<br><small style="color:var(--success)">Скорость марша: x${p.speedMod.toFixed(2)}</small>`;
+  }).join('<br><br>');
+}
+
+// === СИМУЛЯТОР ПОТОКА ВРЕМЕНИ ===
+function toggleSim() {
+  state.sim.isRunning = !state.sim.isRunning;
+  document.getElementById('btn-play').innerText = state.sim.isRunning ? "⏸ ПАУЗА" : "▶ ЗАПУСК";
+  if(state.sim.isRunning) { state.sim.lastFrame = performance.now(); requestAnimationFrame(simStep); }
+}
+
+function resetSim() {
+  state.sim.time = 0; state.sim.isRunning = false;
+  document.getElementById('btn-play').innerText = "▶ ЗАПУСК";
+  document.getElementById('main-log').innerHTML = "";
+  updateTimeUI(); draw();
+}
+
+function simStep(now) {
+  if(!state.sim.isRunning) return;
+  let speed = parseFloat(document.getElementById('sim-speed').value);
+  let dt = (now - state.sim.lastFrame) / 1000;
+  let hoursPassed = dt * speed;
+  
+  let oldDay = Math.floor(state.sim.time / 24);
+  state.sim.time += hoursPassed;
+  let newDay = Math.floor(state.sim.time / 24);
+
+  if(newDay > oldDay) {
+    let roll = Math.floor(Math.random() * 100) + 1;
+    let threshold = parseInt(document.getElementById('encounter-chance').value) || 15;
+    if(roll <= threshold) {
+      log(`🎲 [Случайное Столкновение] День ${newDay+1}: Бросок ${roll} из 100 (Порог ${threshold}%). Группа атакована засадой монстров! Движение заблокировано.`, "#fbbf24");
+      toggleSim();
+    }
+  }
+
+  if(state.sim.time >= state.sim.maxTime) { state.sim.time = state.sim.maxTime; state.sim.isRunning = false; toggleSim(); log("🏁 Все доступные маршруты исчерпаны.", "#4ade80"); }
+
+  updateTimeUI(); updateStatusCard('A'); updateStatusCard('B'); draw();
+  if(state.sim.isRunning) { state.sim.lastFrame = now; requestAnimationFrame(simStep); }
+}
+
+function updateTimeUI() {
+  let T = state.sim.time;
+  document.getElementById('time-badge').innerText = `ДЕНЬ ${Math.floor(T/24)+1} • ${Math.floor(T%24).toString().padStart(2,'0')}:${Math.floor((T%1)*60).toString().padStart(2,'0')}`;
+}
+
+function updateStatusCard(pid) {
+  let pos = getPosAtTime(pid, state.sim.time); if(!pos) return;
+  document.getElementById(`status-card-${pid}`).innerHTML = `Координаты: X:${Math.round(pos.x)}, Y:${Math.round(pos.y)}<br>Численность: ${state.parties[pid].size} чел.<br>Время маршрута: ${state.parties[pid].totalHours?.toFixed(1)} ч.`;
+}
+
+function log(text, color="#fff") {
+  const box = document.getElementById('main-log');
+  box.innerHTML += `<div class="log-item" style="color:${color}">${text}</div>`;
+  box.scrollTop = box.scrollHeight;
+}
+
+// === РЕНДЕРИНГ КАРТЫ И ТАЧ-КОНТРОЛЛЕРЫ ДЛЯ ПЛАНШЕТА (PINCH-TO-ZOOM) ===
+function draw() {
+  ctx.save(); ctx.clearRect(0, 0, cvs.width, cvs.height);
+  ctx.translate(state.view.x, state.view.y); ctx.scale(state.view.zoom, state.view.zoom);
+
+  if(state.mapImg) ctx.drawImage(state.mapImg, 0, 0);
+
+  // Отрисовка сетки гексов
+  ctx.strokeStyle = "rgba(38, 46, 66, 0.25)"; ctx.lineWidth = 1;
+  let r = state.hexSize, h = Math.sqrt(3)*r;
+  for(let x=0; x<4000; x+=h) {
+    for(let y=0; y<4000; y+=r*1.5) {
+      ctx.beginPath(); let cx = x + ((Math.floor(y/(r*1.5)) % 2) ? h/2 : 0);
+      for(let i=0; i<6; i++) { let a = (Math.PI/180)*(60*i-30); ctx.lineTo(cx+r*Math.cos(a), y+r*Math.sin(a)); }
+      ctx.closePath(); ctx.stroke();
+    }
+  }
+
+  // Зоны аномалий/лесов
+  state.terrains.forEach(t => {
+    ctx.fillStyle = "rgba(239, 68, 68, 0.04)"; ctx.strokeStyle = "rgba(239, 68, 68, 0.15)";
+    ctx.beginPath(); ctx.moveTo(t.points[0].x, t.points[0].y); t.points.slice(1).forEach(p=>ctx.lineTo(p.x,p.y));
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+  });
+
+  // Ребра дорог
+  ctx.strokeStyle = "rgba(255,255,255,0.05)"; ctx.lineWidth = 1;
+  Object.keys(state.adj).forEach(id => {
+    state.adj[id].forEach(e => {
+      let n1=state.nodes.find(n=>n.id===e.from), n2=state.nodes.find(n=>n.id===e.to);
+      if(n1 && n2) { ctx.beginPath(); ctx.moveTo(n1.x, n1.y); ctx.lineTo(n2.x, n2.y); ctx.stroke(); }
+    });
+  });
+
+  // Векторы движения групп
+  ['A', 'B'].forEach(pid => {
+    let p = state.parties[pid];
+    if(p.path) {
+      ctx.strokeStyle = pid === 'A' ? "#3b82f6" : "#ef4444"; ctx.lineWidth = 4; ctx.beginPath();
+      let s = state.nodes.find(n=>n.id===p.path[0].from); ctx.moveTo(s.x, s.y);
+      p.path.forEach(e => { let n=state.nodes.find(nx=>nx.id===e.to); ctx.lineTo(n.x, n.y); });
+      ctx.stroke();
+    }
+  });
+
+  // Узлы городов
+  state.nodes.forEach(n => {
+    if(n.type !== 'city') return;
+    ctx.fillStyle = "#1e293b"; ctx.strokeStyle = "#f8fafc"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(n.x, n.y, 6, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = "#cbd5e1"; ctx.font = "12px sans-serif"; ctx.fillText(n.name, n.x+12, n.y+4);
+  });
+
+  // Маркеры-фигурки экспедиций
+  ['A', 'B'].forEach(pid => {
+    let pos = getPosAtTime(pid, state.sim.time);
+    if(pos) {
+      ctx.fillStyle = pid === 'A' ? "#60a5fa" : "#f87171"; ctx.beginPath(); ctx.arc(pos.x, pos.y, 11, 0, Math.PI*2); ctx.fill();
+      ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = "#000"; ctx.font = "bold 11px sans-serif"; ctx.fillText(pid, pos.x-4, pos.y+4);
+    }
+    // Отрисовка подгрупп
+    state.parties[pid].subGroups.forEach(sg => {
+      ctx.fillStyle = "rgba(255,255,255,0.2)"; ctx.strokeStyle = pid==='A'?'#60a5fa':'#f87171';
+      ctx.beginPath(); ctx.arc(sg.pos.x, sg.pos.y, 6, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+    });
+  });
+
+  ctx.restore();
+}
+
+function setupTouchControls() {
+  let isDragging = false, startX = 0, startY = 0, initialDist = null, initialZoom = 1;
+
+  // ТАЧ-СОБЫТИЯ ДЛЯ ПЛАНШЕТА
+  cvs.addEventListener('touchstart', e => {
+    if (e.touches.length === 1) {
+      isDragging = true;
+      startX = e.touches[0].clientX - state.view.x;
+      startY = e.touches[0].clientY - state.view.y;
+      initialDist = null;
+    } else if (e.touches.length === 2) {
+      isDragging = false;
+      initialDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+      initialZoom = state.view.zoom;
+    }
+  }, { passive: true });
+
+  cvs.addEventListener('touchmove', e => {
+    if (isDragging && e.touches.length === 1) {
+      state.view.x = e.touches[0].clientX - startX;
+      state.view.y = e.touches[0].clientY - startY;
+      draw();
+    } else if (e.touches.length === 2 && initialDist) {
+      let curDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+      let factor = curDist / initialDist;
+      let targetZoom = Math.max(0.1, Math.min(8, initialZoom * factor));
+      let midX = (e.touches[0].clientX + e.touches[1].clientX) / 2, midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      applyZoom(targetZoom / state.view.zoom, midX, midY);
+    }
+  }, { passive: true });
+
+  cvs.addEventListener('touchend', e => {
+    if (e.touches.length < 2) initialDist = null;
+    if (e.touches.length === 0) isDragging = false;
+  });
+
+  // МЫШЬ (ПК ДЛЯ РЕЗЕРВА)
+  cvs.addEventListener('mousedown', e => { isDragging = true; startX = e.clientX - state.view.x; startY = e.clientY - state.view.y; });
+  window.addEventListener('mousemove', e => { if (isDragging) { state.view.x = e.clientX - startX; state.view.y = e.clientY - startY; draw(); } });
+  window.addEventListener('mouseup', () => isDragging = false);
+  cvs.addEventListener('wheel', e => { e.preventDefault(); applyZoom(e.deltaY < 0 ? 1.1 : 0.9, e.clientX, e.clientY); }, { passive: false });
+}
+
+function applyZoom(factor, clientX, clientY) {
+  let rect = cvs.getBoundingClientRect();
+  let mX = clientX - rect.left, mY = clientY - rect.top;
+  state.view.x = mX - (mX - state.view.x) * factor;
+  state.view.y = mY - (mY - state.view.y) * factor;
+  state.view.zoom = Math.max(0.1, Math.min(8, state.view.zoom * factor));
+  draw();
+}
+
+init();
+</script>
+</body>
+</html>
